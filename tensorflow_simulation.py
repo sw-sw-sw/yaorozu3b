@@ -5,11 +5,11 @@ from config import *
 import numpy as np
 
 class TensorFlowSimulation:
-    def __init__(self, num_agents, world_width, world_height, queues):
-        self.world_size = tf.constant([world_width, world_height], dtype=tf.float32)
-        self.num_agents = num_agents
+    def __init__(self, queues):
+        self.world_size = tf.constant([WORLD_WIDTH, WORLD_HEIGHT], dtype=tf.float32)
+        self.num_agents = NUM_AGENTS
         # Initialize agent data
-        self.positions = tf.Variable(tf.random.uniform([num_agents, 2], 0, 1, dtype=tf.float32) * self.world_size)
+        self.positions = tf.Variable(tf.random.uniform([self.num_agents, 2], 0, 1, dtype=tf.float32) * self.world_size)
 
         # シミュレーションパラメータ
         self.max_force = tf.constant(MAX_FORCE, dtype=tf.float32)
@@ -34,6 +34,7 @@ class TensorFlowSimulation:
     def _precompute_distances(self):
         diff = self.positions[:, tf.newaxis, :] - self.positions
         return tf.norm(diff, axis=2)
+
 
     #-----------------------------calculate force----------------------------
     

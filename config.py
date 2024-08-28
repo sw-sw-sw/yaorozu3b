@@ -1,7 +1,7 @@
 # Simulation parameters
 WORLD_WIDTH = 2000
 WORLD_HEIGHT = 2000
-NUM_AGENTS = 3000
+NUM_AGENTS = 5000
 
 # Flocking parameters
 MAX_FORCE = 30.0

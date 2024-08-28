@@ -4,7 +4,7 @@ from config import *
 import numpy as np
 
 class Box2DSimulation:
-    def __init__(self, world_width, world_height, queues):
+    def __init__(self, queues):
         self.world = b2World(gravity=(0, 0), doSleep=True)
         self.bodies = []
         self._rendering_queue = queues['rendering_queue']
@@ -30,6 +30,7 @@ class Box2DSimulation:
             body.mass = AGENT_MASS * rnd
             self.bodies.append(body)
 
+
     def apply_forces(self, forces):
         for body, force in zip(self.bodies, forces):
             body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True) 
@@ -42,9 +43,6 @@ class Box2DSimulation:
 
     def apply_positions_to_shared_memory(self, _positions):
         np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = self.get_positions()
-
-        
-        
         
     def step(self):
         self.world.Step(DT, 6, 2)

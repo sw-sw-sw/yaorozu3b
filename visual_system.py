@@ -3,10 +3,10 @@ from config import *
 from timer import Timer
 
 class VisualSystem:
-    def __init__(self, width, height, queues, running):
+    def __init__(self, queues, running):
         pygame.init()
         self._rendering_queue = queues['rendering_queue']
-        self.screen = pygame.display.set_mode((width, height))
+        self.screen = pygame.display.set_mode((WORLD_WIDTH, WORLD_HEIGHT))
         self.running = running
         self.timer = Timer("Render ")
 
