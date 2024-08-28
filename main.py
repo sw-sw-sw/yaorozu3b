@@ -20,7 +20,7 @@ def eco_run(queue, share_memory, running):
 
 
 def tf_run(queues, shared_memory, running):
-    tensorflow = TensorFlowSimulation(NUM_AGENTS, WORLD_WIDTH, WORLD_HEIGHT)
+    tensorflow = TensorFlowSimulation(NUM_AGENTS, WORLD_WIDTH, WORLD_HEIGHT, queues,)
     timer = Timer("Tensor ")
     _positions = shared_memory['positions']
     _forces = shared_memory['forces']
@@ -29,10 +29,13 @@ def tf_run(queues, shared_memory, running):
         timer.start()
         # forceを計算するルーチン
         
-        positions = np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))
-        tensorflow.update_positions(tf.constant(positions, dtype=tf.float32))
-        new_forces = tensorflow.calculate_forces().numpy()
-        np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = new_forces
+        # positions = np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))
+        # tensorflow.update_positions(tf.constant(positions, dtype=tf.float32))
+        tensorflow.update_positions(_positions)
+        # new_forces = tensorflow.calculate_forces().numpy()
+        # np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = new_forces
+
+        tensorflow.apply_force_to_shared_memory(_forces)
 
         #fps計算　周期をあわせる
         shared_memory['tf_time'].value = timer.calculate_time()
@@ -55,18 +58,12 @@ def box2d_run(queues, shared_memory, running):
     initial_velocities = np.random.uniform(INITIAL_VELOCITY_MIN, INITIAL_VELOCITY_MAX, (NUM_AGENTS, 2)).astype(np.float32)
     box2d.create_bodies(initial_positions, initial_velocities)
 
-
     while running.value:
         # 物理シミュレーションの更新
         timer.start() # timer
-        # forces = np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))
-        # box2d.apply_forces(forces)
         box2d.apply_forces_to_box2d(_forces)
         box2d.step()
         box2d.apply_positions_to_shared_memory(_positions)
-        # new_positions = box2d.get_positions()        
-        # np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = new_positions
-        
         box2d.add_positions_to_render_queue() # visual systemにpositionを送る
             
         _box2d_time.value = timer.calculate_time()

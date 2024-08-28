@@ -5,7 +5,7 @@ from config import *
 import numpy as np
 
 class TensorFlowSimulation:
-    def __init__(self, num_agents, world_width, world_height):
+    def __init__(self, num_agents, world_width, world_height, queues):
         self.world_size = tf.constant([world_width, world_height], dtype=tf.float32)
         self.num_agents = num_agents
         # Initialize agent data
@@ -18,10 +18,20 @@ class TensorFlowSimulation:
         self.separation_weight = tf.constant(SEPARATION_WEIGHT, dtype=tf.float32)
         self.cohesion_weight = tf.constant(COHESION_WEIGHT, dtype=tf.float32)
 
-    # @tf.function
-    def update_positions(self, new_positions):
+    @tf.function
+    def _update_positions(self, new_positions):
         self.positions.assign(new_positions)
+    
+    @tf.function
+    def update_positions(self, _positions):
+        positions = np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))
+        self._update_positions(tf.constant(positions, dtype=tf.float32))
 
+    # @tf.function
+    def apply_force_to_shared_memory(self, _forces):
+        new_forces = self.calculate_forces()
+        np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = np.array(new_forces)
+        
     @tf.function
     def precompute_distances(self):
         diff = self.positions[:, tf.newaxis, :] - self.positions
