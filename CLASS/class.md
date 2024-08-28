@@ -1,3 +1,120 @@
+
+### Alifeシュミレーターの構成です。
+・マルチプロセッシングと共有メモリーを使用しています。
+・それぞれのメソッド、それぞれのクラスはマルチプロセッシングで動いています。
+・そのため、mainファイルの各メソッド内(tf_loop、box2d_loop、visual_system_loop、ecosystem_liip)で、各クラスをインスタンス化しています。
+・SharedMemoryManagerクラスはmainファイル内でインスタンス化されています。
+・それぞれのクラスはSharedMemoryManagerでデーターを共有しています。
+・SharedMemoryManagerのインスタンスは、各プロセスに渡され、さらに各クラスのイニシャライザーに渡されています。
+・それによって、大量のシミュレーションを効率よく処理するシステムになっています。
+・各クラスはマルチプロセスによって並列動作しているため、クラス間のやりとりはqueueによって行われています。
+
+```
+[Main Process]
+  |
+  |--> Creates SharedMemoryManager
+  |--> Creates Queues
+  |
+  |--> Spawns Process: [Ecosystem Process]
+  |     |- Ecosystem
+  |     |- Uses SharedMemoryManager
+  |     |- Uses Queues: ecosystem_to_box2d, ecosystem_to_visual, box2d_to_eco, visual_to_eco
+  |
+  |--> Spawns Process: [Box2D Process]
+  |     |- Box2DSimulation
+  |     |- Uses SharedMemoryManager
+  |     |- Uses Queues: ecosystem_to_box2d, box2d_to_eco
+  |
+  |--> Spawns Process: [TensorFlow Process]
+  |     |- TensorFlowSimulation
+  |     |- Uses SharedMemoryManager
+  |
+  |--> Spawns Process: [Visual System Process]
+       |- VisualSystem
+       |- Uses SharedMemoryManager
+       |- Uses Queues: ecosystem_to_visual, visual_to_eco
+
+[SharedMemoryManager]
+  |- Manages shared memory for positions, velocities, forces, etc.
+
+[Queues]
+  |- ecosystem_to_box2d
+  |- box2d_to_eco
+  |- ecosystem_to_visual
+  |- visual_to_eco
+
+```
+
+  ```mermaid
+classDiagram
+    class Main {
+        -shared_memory_manager: SharedMemoryManager
+        -queue_eco_to_box2d: Queue
+        -queue_eco_to_visual: Queue
+        +run_ecosystem(shared_memory_manager, queue_eco_to_box2d, queue_eco_to_visual)
+        +run_box2d(shared_memory_manager, queue_eco_to_box2d)
+        +run_visual_system(shared_memory_manager, queue_eco_to_visual)
+    }
+
+    class SharedMemoryManager {
+        -positions: np.ndarray
+        -velocities: np.ndarray
+        -forces: np.ndarray
+        +get_positions()
+        +update_positions(new_positions)
+        +get_velocities()
+        +update_velocities(new_velocities)
+        +get_forces()
+        +update_forces(new_forces)
+    }
+
+    class Ecosystem {
+        -shared_memory: SharedMemoryManager
+        -queue_to_box2d: Queue
+        -queue_to_visual: Queue
+        +run()
+    }
+
+    class Box2DSimulation {
+        -shared_memory: SharedMemoryManager
+        -queue_from_eco: Queue
+        +run()
+    }
+
+    class TensorflowSystem {
+        -shared_memory: SharedMemoryManager
+        +run()
+    }
+
+    class VisualSystem {
+        -shared_memory: SharedMemoryManager
+        -queue_from_eco: Queue
+        +run()
+    }
+
+    Main --> SharedMemoryManager : creates
+    Main --> Ecosystem : spawns process
+    Main --> Box2DSimulation : spawns process
+    Main --> VisualSystem : spawns process
+    Main --> TensorflowSystem : spawn process
+    Ecosystem --> SharedMemoryManager : uses
+    Box2DSimulation --> SharedMemoryManager : uses
+    VisualSystem --> SharedMemoryManager : uses
+    TensorflowSystem --> SharedMemoryManager : uses
+    Ecosystem ..> Box2DSimulation : communicates via queuex
+    Ecosystem ..> VisualSystem : communicates via queue
+```
+
+.
+.
+.
+以下は、上記のmainファイルとその中のマルチプロセッシングに関わる各プロセスを省略しています。
+実際の機能に関わるクラスだけを取り出したクラス図です。
+各クラスで追次処理が必要な場合は、multiprocessing.Queueによって、連携を取ります。
+以下の点線は、Queueの流れです。
+・
+・
+・
 ```mermaid
 classDiagram
 
@@ -133,26 +250,3 @@ classDiagram
 
 ```
 
-
-```mermaid
-classDiagram
-
-    class main {
-    +tf_loop()
-    +box2d_loop()
-    +visual_system_loop()
-    +ecosystem_loop()
-    }
-
-    main -- Ecosystem 
-    main -- SharedMemoryManager 
-    main -- TensorFlowSimulation
-    main -- Box2DSimulation
-    main -- VisualSystem
-    
-    Ecosystem <..> SharedMemoryManager
-    SharedMemoryManager <..> Box2DSimulation
-    SharedMemoryManager <..> TensorFlowSimulation
-    SharedMemoryManager <..> VisualSystem
-
-```

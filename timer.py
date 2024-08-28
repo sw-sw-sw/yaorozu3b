@@ -13,32 +13,13 @@ class Timer:
     def start(self):
         self.start_time = time.time()
     
-    # def calculate(self):
-        # self.frame_count += 1
-        # self.current_time = time.time() 
-        # if self.current_time - self.last_time >= self.fps_update_interval: 
-            
-        #     # calculate fps
-        #     fps = self._calculate_fps()
-        #     if self.b_print:
-        #         print(self.name + f" FPS: {fps:.2f}")
-            
-        #     #   calculate time value
-        #     self.last_time = self.current_time
-        #     self.frame_count = 0
-        #     self.time_value = time.time() - self.start_time
-        #     self._set_time_interval(self.time_value)
-            
-        #     # TensorFlowの処理時間を記録
-        # return self.time_value
-        
     def _calculate_fps(self):
         return self.frame_count / (self.current_time - self.last_time) if (self.current_time - self.last_time) > 0 else 0
 
     def sleep_time(self, other_time_value):
-        time_interval = max(other_time_value - self.time_value, 0)
-        # print("time interval", time_interval)
-        time.sleep(time_interval)
+        sleep_duration = max(other_time_value - self.time_value, 0)
+        # print(f"Sleeping for {sleep_duration:.6f} seconds")
+        time.sleep(sleep_duration)
         
     def calculate_time(self):
         self.time_value = time.time() - self.start_time
