@@ -17,9 +17,17 @@ class Ecosystem:
             np_agent_ids = np.frombuffer(shared_memory['agent_ids'].get_obj(), dtype=np.int32)
             np_agent_species = np.frombuffer(shared_memory['agent_species'].get_obj(), dtype=np.int32)
 
-            np_positions[:] = np.random.uniform(0, 1, (NUM_AGENTS, 2))
-            np_positions[:, 0] *= WORLD_WIDTH
-            np_positions[:, 1] *= WORLD_HEIGHT
+            # 円形領域の中心と半径を定義
+            center_x, center_y = WORLD_WIDTH / 2, WORLD_HEIGHT / 2
+            radius = min(WORLD_WIDTH, WORLD_HEIGHT) / 2
+
+            # 円形領域内にランダムな位置を生成
+            angles = np.random.uniform(0, 2 * np.pi, NUM_AGENTS)
+            radii = np.sqrt(np.random.uniform(0, 1, NUM_AGENTS)) * radius  # 均一な分布のために平方根を使用
+            
+            np_positions[:, 0] = center_x + radii * np.cos(angles)
+            np_positions[:, 1] = center_y + radii * np.sin(angles)
+
             np_velocities[:] = np.random.uniform(INITIAL_VELOCITY_MIN, INITIAL_VELOCITY_MAX, (NUM_AGENTS, 2))
             np_forces[:] = np.zeros((NUM_AGENTS, 2))
             np_agent_ids[:] = np.arange(NUM_AGENTS)

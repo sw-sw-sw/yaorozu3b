@@ -5,13 +5,16 @@ import numpy as np
 class TensorFlowSimulation:
     def __init__(self, queues):
         self.world_size = tf.constant([WORLD_WIDTH, WORLD_HEIGHT], dtype=tf.float32)
+        self.world_center = self.world_size / 2
+        self.world_radius = tf.reduce_min(self.world_size) / 2 - 10
         self.positions = tf.Variable(tf.random.uniform([NUM_AGENTS, 2], 0, 1, dtype=tf.float32) * self.world_size)
         self.max_force = tf.constant(MAX_FORCE, dtype=tf.float32)
         self.separation_distance = tf.Variable(SEPARATION_DISTANCE, dtype=tf.float32)
         self.cohesion_distance = tf.constant(COHESION_DISTANCE, dtype=tf.float32)
         self.separation_weight = tf.constant(SEPARATION_WEIGHT, dtype=tf.float32)
         self.cohesion_weight = tf.constant(COHESION_WEIGHT, dtype=tf.float32)
-
+        self.center_attraction_weight = tf.constant(CENTER_ATTRACTION_WEIGHT, dtype=tf.float32)  # 新しい重み
+        self.confinement_weight = tf.constant(CONFINEMENT_WEIGHT, dtype=tf.float32)
     @tf.function
     def _update_positions(self, new_positions):
         self.positions.assign(new_positions)
@@ -29,7 +32,12 @@ class TensorFlowSimulation:
         distances = tf.norm(self.positions[:, tf.newaxis, :] - self.positions, axis=2)
         separation = self._separation(distances)
         cohesion = self._cohesion(distances)
-        forces = self.separation_weight * separation + self.cohesion_weight * cohesion
+        center_attraction = self._center_attraction()
+        confinement = self._circular_confinement()# 新しい中心力関数
+        forces = (self.separation_weight * separation +
+                  self.cohesion_weight * cohesion +
+                  self.confinement_weight * confinement +
+                  self.center_attraction_weight * center_attraction)  # 中心力を追加
         return self._limit_magnitude(forces, self.max_force)
 
     @tf.function
@@ -47,6 +55,23 @@ class TensorFlowSimulation:
         count = tf.reduce_sum(mask, axis=1, keepdims=True)
         center_of_mass = tf.where(count > 0, center_of_mass / count, self.positions)
         return center_of_mass - self.positions
+
+    @tf.function
+    def _center_attraction(self):
+        # ワールドの中心を計算
+        world_center = self.world_size / 2
+        # 各エージェントから中心への方向ベクトルを計算
+        to_center = world_center - self.positions
+        # 方向ベクトルを正規化（単位ベクトル化）
+        return tf.nn.l2_normalize(to_center, axis=1)
+
+    @tf.function
+    def _circular_confinement(self):
+        to_center = self.world_center - self.positions
+        distances = tf.norm(to_center, axis=1, keepdims=True)
+        outside_circle = tf.cast(distances > self.world_radius, tf.float32)
+        confinement_force = outside_circle * (distances - self.world_radius) * to_center / distances
+        return confinement_force
 
     @tf.function
     def _limit_magnitude(self, vectors, max_magnitude):
