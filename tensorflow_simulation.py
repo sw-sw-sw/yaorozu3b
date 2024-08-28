@@ -22,18 +22,16 @@ class TensorFlowSimulation:
     def _update_positions(self, new_positions):
         self.positions.assign(new_positions)
     
-    @tf.function
     def update_positions(self, _positions):
         positions = np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))
         self._update_positions(tf.constant(positions, dtype=tf.float32))
-
-    # @tf.function
+        
     def apply_force_to_shared_memory(self, _forces):
         new_forces = self.calculate_forces()
         np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = np.array(new_forces)
         
     @tf.function
-    def precompute_distances(self):
+    def _precompute_distances(self):
         diff = self.positions[:, tf.newaxis, :] - self.positions
         return tf.norm(diff, axis=2)
 
@@ -41,17 +39,17 @@ class TensorFlowSimulation:
     
     @tf.function
     def calculate_forces(self):
-        distances = self.precompute_distances()
-        separation = self.separation(distances)
-        cohesion = self.cohesion(distances)
+        distances = self._precompute_distances()
+        separation = self._separation(distances)
+        cohesion = self._cohesion(distances)
         forces = (
             self.separation_weight * separation +
             self.cohesion_weight * cohesion
         )
-        return self.limit_magnitude(forces, self.max_force)
+        return self._limit_magnitude(forces, self.max_force)
 
     @tf.function
-    def separation(self, distances):
+    def _separation(self, distances):
         mask = tf.logical_and(distances < self.separation_distance, distances > 0)
         mask = tf.cast(mask, tf.float32)
         diff = self.positions[:, tf.newaxis, :] - self.positions
@@ -61,7 +59,7 @@ class TensorFlowSimulation:
 
 
     @tf.function
-    def cohesion(self, distances):
+    def _cohesion(self, distances):
         mask = tf.logical_and(distances < self.cohesion_distance, distances > 0)
         mask = tf.cast(mask, tf.float32)
         center_of_mass = tf.reduce_sum(self.positions * mask[:, :, tf.newaxis], axis=1)
@@ -70,6 +68,6 @@ class TensorFlowSimulation:
         return center_of_mass - self.positions
 
     @tf.function
-    def limit_magnitude(self, vectors, max_magnitude):
+    def _limit_magnitude(self, vectors, max_magnitude):
         magnitudes = tf.norm(vectors, axis=1, keepdims=True)
         return tf.where(magnitudes > max_magnitude, vectors * max_magnitude / magnitudes, vectors)

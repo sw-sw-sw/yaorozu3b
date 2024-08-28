@@ -24,7 +24,9 @@ def tf_run(queues, shared_memory, running):
     timer = Timer("Tensor ")
     _positions = shared_memory['positions']
     _forces = shared_memory['forces']
-
+    _box2d_time = shared_memory['box2d_time']
+    _tf_time = shared_memory['tf_time']
+    
     while running.value:
         timer.start()
         # forceを計算するルーチン
@@ -36,10 +38,9 @@ def tf_run(queues, shared_memory, running):
         # np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = new_forces
 
         tensorflow.apply_force_to_shared_memory(_forces)
-
         #fps計算　周期をあわせる
-        shared_memory['tf_time'].value = timer.calculate_time()
-        timer.sleep_time(shared_memory['box2d_time'].value)
+        _tf_time.value = timer.calculate_time()
+        timer.sleep_time(_box2d_time.value)
         timer.print_fps(1)
 
 
