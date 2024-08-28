@@ -2,6 +2,8 @@ from Box2D import b2World, b2Vec2, b2BodyDef, b2_dynamicBody, b2CircleShape
 from config import *
 import numpy as np
 import logging
+import random
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +14,11 @@ class Box2DSimulation:
         self._rendering_queue = queues['rendering_queue']
         self._eco_to_box2d_creatures = queues['eco_to_box2d_creatures']
         self.positions = np.zeros((NUM_AGENTS, 2), dtype=np.float32)
-
+        # for radom velocity
+        self.last_random_velocity_time = time.time()
+        self.random_velocity_interval = 0.01  # Apply random velocity every 1 second
+        self.random_speed= 10
+        
     def create_bodies(self):
         for _ in range(NUM_AGENTS):
             creature_info = self._eco_to_box2d_creatures.get()
@@ -30,7 +36,7 @@ class Box2DSimulation:
         circle_shape = b2CircleShape(radius=creature_info['radius'])
         body.CreateFixture(shape=circle_shape, density=AGENT_DENSITY, 
                            friction=AGENT_FRICTION, restitution=AGENT_RESTITUTION)
-        body.mass = AGENT_MASS
+        body.mass = AGENT_MASS * creature_info['radius']
         self.bodies.append(body)
 
     def apply_forces_to_box2d(self, _forces):
@@ -42,8 +48,20 @@ class Box2DSimulation:
         positions = self.get_positions()
         np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = positions
 
+    def apply_random_velocity(self):
+        current_time = time.time()
+        if current_time - self.last_random_velocity_time >= self.random_velocity_interval:
+            random_body = random.choice(self.bodies)
+            random_velocity = b2Vec2(
+                random.uniform(-self.random_speed, self.random_speed),
+                random.uniform(-self.random_speed, self.random_speed)
+            )
+            random_body.linearVelocity = random_velocity
+            self.last_random_velocity_time = current_time
+
     def step(self):
         self.world.Step(DT, 6, 2)
+        self.apply_random_velocity()
 
     def get_positions(self):
         return np.array([(body.position.x, body.position.y) for body in self.bodies], dtype=np.float32)
