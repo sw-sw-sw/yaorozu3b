@@ -71,11 +71,11 @@ def run_simulation():
     logger.info("Starting simulation")
     
     shared_memory = {
-        'positions': mp.Array('f', NUM_AGENTS * 2),
-        'velocities': mp.Array('f', NUM_AGENTS * 2),
-        'forces': mp.Array('f', NUM_AGENTS * 2),
-        'agent_ids': mp.Array('i', NUM_AGENTS),
-        'agent_species': mp.Array('i', NUM_AGENTS),
+        'positions': mp.Array('f', MAX_AGENTS_NUM * 2),
+        'velocities': mp.Array('f', MAX_AGENTS_NUM * 2),
+        'forces': mp.Array('f', MAX_AGENTS_NUM * 2),
+        'agent_ids': mp.Array('i', MAX_AGENTS_NUM),
+        'agent_species': mp.Array('i', MAX_AGENTS_NUM),
         'current_agent_count': mp.Value('i', 0),
         'tf_time': mp.Value('d', 0.0),
         'box2d_time': mp.Value('d', 0.0),

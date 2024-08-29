@@ -1,74 +1,76 @@
-import tensorflow as tf
-from config import *
-import numpy as np
+import csv
+from typing import Dict, Any, Optional
 
-class TensorFlowSimulation:
-    def __init__(self, queues):
-        self.world_size = tf.constant([WORLD_WIDTH, WORLD_HEIGHT], dtype=tf.float32)
-        self.positions = tf.Variable(tf.random.uniform([NUM_AGENTS, 2], 0, 1, dtype=tf.float32) * self.world_size)
-        self.max_force = tf.constant(MAX_FORCE, dtype=tf.float32)
-        self.separation_distance = tf.Variable(SEPARATION_DISTANCE, dtype=tf.float32)
-        self.cohesion_distance = tf.constant(COHESION_DISTANCE, dtype=tf.float32)
-        self.separation_weight = tf.constant(SEPARATION_WEIGHT, dtype=tf.float32)
-        self.cohesion_weight = tf.constant(COHESION_WEIGHT, dtype=tf.float32)
-        
-        # 回転力の強さを制御するパラメータ
-        self.rotation_strength = tf.constant(0.1, dtype=tf.float32)
+class DNAManager:
+    def __init__(self, file_path: str = 'dna_config.csv'):
+        self.file_path = file_path
+        self.config: Dict[str, Any] = {}
+        self.load_config()
 
-    @tf.function
-    def _update_positions(self, new_positions):
-        self.positions.assign(new_positions)
+    def load_config(self):
+        try:
+            with open(self.file_path, 'r', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    trait = row['SPECIES_TYPE']
+                    if trait:  # Skip empty rows
+                        self._process_row(row, trait)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"DNA設定ファイルが見つかりません: {self.file_path}")
+        except csv.Error as e:
+            raise ValueError(f"CSVファイルの読み込み中にエラーが発生しました: {e}")
 
-    def update_positions(self, _positions):
-        positions = np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))
-        self._update_positions(tf.constant(positions, dtype=tf.float32))
+    def _process_row(self, row: Dict[str, str], trait: str):
+        self.config[trait] = {}
+        if row['GLOBAL']:
+            self.config[trait]['GLOBAL'] = self._parse_value(row['GLOBAL'])
+        for species in range(1, 9):
+            if row[str(species)]:
+                self.config[trait][species] = self._parse_value(row[str(species)])
+        for limit in ['Min', 'Max']:
+            if row[limit]:
+                self.config[trait][limit] = self._parse_value(row[limit])
 
-    def apply_force_to_shared_memory(self, _forces):
-        new_forces = self.calculate_forces()
-        np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = np.array(new_forces)
+    @staticmethod
+    def _parse_value(value: str) -> Any:
+        try:
+            return int(value)
+        except ValueError:
+            try:
+                return float(value)
+            except ValueError:
+                return value
 
-    @tf.function
-    def calculate_forces(self):
-        distances = tf.norm(self.positions[:, tf.newaxis, :] - self.positions, axis=2)
-        separation = self._separation(distances)
-        cohesion = self._cohesion(distances)
-        rotation = self._rotation()
-        forces = self.separation_weight * separation + self.cohesion_weight * cohesion + rotation
-        return self._limit_magnitude(forces, self.max_force)
+    def get_trait_value(self, trait: str, species: Optional[int] = None) -> Any:
+        if trait not in self.config:
+            raise KeyError(f"指定されたトレイト {trait} が見つかりません。")
 
-    @tf.function
-    def _separation(self, distances):
-        mask = tf.cast(tf.logical_and(distances < self.separation_distance, distances > 0), tf.float32)
-        diff = self.positions[:, tf.newaxis, :] - self.positions
-        steer = tf.reduce_sum(diff * mask[:, :, tf.newaxis], axis=1)
-        count = tf.reduce_sum(mask, axis=1, keepdims=True)
-        return tf.where(count > 0, steer / count, 0)
+        trait_config = self.config[trait]
 
-    @tf.function
-    def _cohesion(self, distances):
-        mask = tf.cast(tf.logical_and(distances < self.cohesion_distance, distances > 0), tf.float32)
-        center_of_mass = tf.reduce_sum(self.positions * mask[:, :, tf.newaxis], axis=1)
-        count = tf.reduce_sum(mask, axis=1, keepdims=True)
-        center_of_mass = tf.where(count > 0, center_of_mass / count, self.positions)
-        return center_of_mass - self.positions
+        if species is not None:
+            if species not in trait_config:
+                return trait_config.get('GLOBAL')
+            return trait_config[species]
 
-    @tf.function
-    def _rotation(self):
-        # 画面中心を計算
-        center = self.world_size / 2
+        return trait_config.get('GLOBAL', next(iter(trait_config.values())))
 
-        # エージェントと中心との相対位置を計算
-        relative_pos = self.positions - center
+    def get_trait_range(self, trait: str) -> tuple:
+        if trait not in self.config:
+            raise KeyError(f"指定されたトレイト {trait} が見つかりません。")
 
-        # 回転力を計算 (反時計回り)
-        rotation_force = tf.stack([-relative_pos[:, 1], relative_pos[:, 0]], axis=1)
+        trait_config = self.config[trait]
+        min_value = trait_config.get('Min', float('-inf'))
+        max_value = trait_config.get('Max', float('inf'))
 
-        # 回転力を正規化し、強さを調整
-        rotation_force = self._limit_magnitude(rotation_force, 1.0) * self.rotation_strength
+        return (min_value, max_value)
 
-        return rotation_force
+    def __getitem__(self, species: int):
+        return DNASpecies(self, species)
 
-    @tf.function
-    def _limit_magnitude(self, vectors, max_magnitude):
-        magnitudes = tf.norm(vectors, axis=1, keepdims=True)
-        return tf.where(magnitudes > max_magnitude, vectors * max_magnitude / magnitudes, vectors)
+class DNASpecies:
+    def __init__(self, dna_manager: DNAManager, species: int):
+        self.dna_manager = dna_manager
+        self.species = species
+
+    def get_trait_value(self, trait: str) -> Any:
+        return self.dna_manager.get_trait_value(trait, self.species)

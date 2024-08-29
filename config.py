@@ -1,32 +1,8 @@
+# ------------ INITIAL SETTING ---------------------------
 # Simulation parameters
 WORLD_WIDTH = 2000
 WORLD_HEIGHT = 2000
-NUM_AGENTS = 3000
-
-# Flocking parameters
-MAX_FORCE = 100.0
-
-SEPARATION_DISTANCE = 20.0
-SEPARATION_WEIGHT = 50
-COHESION_DISTANCE = 300.0
-COHESION_WEIGHT = 400
-
-# Environment parameters
-CENTER_ATTRACTION_WEIGHT = 0 
-CONFINEMENT_WEIGHT = 80.0
-ROTATION_STRENGTH = 100
-
-RANDOM_VELOCITY_INTERVAL = 0.1
-RANDOM_SPEED = 40
-
-# Box2D physics parameters
-# Agent parameters
-LINEAR_DAMPING = .4 #線形減衰
-AGENT_RADIUS = 5 
-AGENT_MASS = 3
-AGENT_FRICTION = 0.3
-AGENT_DENSITY = 1 #密度
-AGENT_RESTITUTION = 0  # 弾力
+MAX_AGENTS_NUM = 3000
 
 # Simulation speed
 RENDER_FPS = 240
@@ -36,7 +12,23 @@ DT = 1 / 30
 BACKGROUND_COLOR = (0, 0, 0)  # White
 AGENT_COLOR = (255, 255, 255)  # Black
 
+# ----------------- Environment parameters ----------------------
+CENTER_ATTRACTION_WEIGHT = 0 
+CONFINEMENT_WEIGHT = 80.0
+ROTATION_STRENGTH = 100
+
+RANDOM_VELOCITY_INTERVAL = 0.1
+RANDOM_SPEED = 40
+
+# ------------------ Common species parameters ---------------------
+# Flocking parameters
+SEPARATION_DISTANCE = 20.0
+SEPARATION_WEIGHT = 50
+COHESION_DISTANCE = 300.0
+COHESION_WEIGHT = 400
+
 # Initial velocity range
 INITIAL_VELOCITY_MIN = -200
 INITIAL_VELOCITY_MAX = 200
+MAX_FORCE = 200
 

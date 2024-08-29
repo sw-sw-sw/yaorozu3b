@@ -7,7 +7,7 @@ class TensorFlowSimulation:
         self.world_size = tf.constant([WORLD_WIDTH, WORLD_HEIGHT], dtype=tf.float32)
         self.world_center = self.world_size / 2
         self.world_radius = tf.reduce_min(self.world_size) / 2 - 10
-        self.positions = tf.Variable(tf.random.uniform([NUM_AGENTS, 2], 0, 1, dtype=tf.float32) * self.world_size)
+        self.positions = tf.Variable(tf.random.uniform([MAX_AGENTS_NUM, 2], 0, 1, dtype=tf.float32) * self.world_size)
         self.max_force = tf.constant(MAX_FORCE, dtype=tf.float32)
 
         self.separation_distance = tf.Variable(SEPARATION_DISTANCE, dtype=tf.float32)
@@ -24,12 +24,12 @@ class TensorFlowSimulation:
         self.positions.assign(new_positions)
 
     def update_positions(self, _positions):
-        positions = np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))
+        positions = np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((MAX_AGENTS_NUM, 2))
         self._update_positions(tf.constant(positions, dtype=tf.float32))
 
     def apply_force_to_shared_memory(self, _forces):
         new_forces = self.calculate_forces()
-        np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = np.array(new_forces)
+        np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((MAX_AGENTS_NUM, 2))[:] = np.array(new_forces)
 
     # ------------------ calculate forces ---------------------
 

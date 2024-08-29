@@ -9,11 +9,12 @@ class DNAManager:
 
     def load_config(self):
         try:
-            with open(self.file_path, 'r') as csvfile:
+            with open(self.file_path, 'r', encoding='utf-8') as csvfile:
                 reader = csv.DictReader(csvfile)
                 for row in reader:
                     trait = row['SPECIES_TYPE']
-                    self._process_row(row, trait)
+                    if trait:  # Skip empty rows
+                        self._process_row(row, trait)
         except FileNotFoundError:
             raise FileNotFoundError(f"DNA設定ファイルが見つかりません: {self.file_path}")
         except csv.Error as e:
@@ -43,24 +44,24 @@ class DNAManager:
     def get_trait_value(self, trait: str, species: Optional[int] = None) -> Any:
         if trait not in self.config:
             raise KeyError(f"指定されたトレイト {trait} が見つかりません。")
-        
+
         trait_config = self.config[trait]
-        
+
         if species is not None:
             if species not in trait_config:
                 return trait_config.get('GLOBAL')
             return trait_config[species]
-        
+
         return trait_config.get('GLOBAL', next(iter(trait_config.values())))
 
     def get_trait_range(self, trait: str) -> tuple:
         if trait not in self.config:
             raise KeyError(f"指定されたトレイト {trait} が見つかりません。")
-        
+
         trait_config = self.config[trait]
         min_value = trait_config.get('Min', float('-inf'))
         max_value = trait_config.get('Max', float('inf'))
-        
+
         return (min_value, max_value)
 
     def __getitem__(self, species: int):
