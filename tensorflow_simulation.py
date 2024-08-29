@@ -7,14 +7,16 @@ class TensorFlowSimulation:
         self.world_size = tf.constant([WORLD_WIDTH, WORLD_HEIGHT], dtype=tf.float32)
         self.world_center = self.world_size / 2
         self.world_radius = tf.reduce_min(self.world_size) / 2 - 10
-        self.positions = tf.Variable(tf.random.uniform([MAX_AGENTS_NUM, 2], 0, 1, dtype=tf.float32) * self.world_size)
+        self.positions = tf.Variable(tf.zeros([MAX_AGENTS_NUM, 2], dtype=tf.float32))
         self.max_force = tf.constant(MAX_FORCE, dtype=tf.float32)
 
-        self.separation_distance = tf.Variable(SEPARATION_DISTANCE, dtype=tf.float32)
+        # Flocking parameters
+        self.separation_distance = tf.constant(SEPARATION_DISTANCE, dtype=tf.float32)
         self.cohesion_distance = tf.constant(COHESION_DISTANCE, dtype=tf.float32)
         self.separation_weight = tf.constant(SEPARATION_WEIGHT, dtype=tf.float32)
         self.cohesion_weight = tf.constant(COHESION_WEIGHT, dtype=tf.float32)
 
+        # Environmental forces parameters
         self.center_attraction_weight = tf.constant(CENTER_ATTRACTION_WEIGHT, dtype=tf.float32)
         self.rotation_strength = tf.constant(ROTATION_STRENGTH, dtype=tf.float32)
         self.confinement_weight = tf.constant(CONFINEMENT_WEIGHT, dtype=tf.float32)
@@ -31,21 +33,17 @@ class TensorFlowSimulation:
         new_forces = self.calculate_forces()
         np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((MAX_AGENTS_NUM, 2))[:] = np.array(new_forces)
 
-    # ------------------ calculate forces ---------------------
-
     @tf.function
-    def individual_forces(self):
+    def _species_forces(self):
         distances = self._calculate_distances()
         separation = self._separation(distances)
         cohesion = self._cohesion(distances)
         forces = (self.separation_weight * separation +
-                  self.cohesion_weight * cohesion +
-                  predator_prey)
-                  predator_prey)
+                  self.cohesion_weight * cohesion)
         return self._limit_magnitude(forces, self.max_force)
 
     @tf.function
-    def environment_forces(self):
+    def _environment_forces(self):
         center_attraction = self._center_attraction()
         circular_confinement = self._circular_confinement()
         to_center, distances = self._calculate_center_distances()
@@ -57,7 +55,7 @@ class TensorFlowSimulation:
 
     @tf.function
     def calculate_forces(self):
-        return self.individual_forces() + self.environment_forces()
+        return self._species_forces() + self._environment_forces()
 
     # ---------------each force module ------------------------
 
@@ -121,3 +119,4 @@ class TensorFlowSimulation:
         magnitudes = tf.norm(vectors, axis=1, keepdims=True)
         scale = tf.minimum(max_magnitude / magnitudes, 1.0)
         return vectors * scale
+    

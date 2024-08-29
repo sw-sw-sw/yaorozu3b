@@ -1,76 +1,152 @@
-import csv
-from typing import Dict, Any, Optional
+import tensorflow as tf
+from config import *
+import numpy as np
 
-class DNAManager:
-    def __init__(self, file_path: str = 'dna_config.csv'):
-        self.file_path = file_path
-        self.config: Dict[str, Any] = {}
-        self.load_config()
+class TensorFlowSimulation:
+    def __init__(self, queues):
+        self.world_size = tf.constant([WORLD_WIDTH, WORLD_HEIGHT], dtype=tf.float32)
+        self.world_center = self.world_size / 2
+        self.world_radius = tf.reduce_min(self.world_size) / 2 - 10
+        self.positions = tf.Variable(tf.random.uniform([NUM_AGENTS, 2], 0, 1, dtype=tf.float32) * self.world_size)
+        self.max_force = tf.constant(MAX_FORCE, dtype=tf.float32)
 
-    def load_config(self):
-        try:
-            with open(self.file_path, 'r', encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile)
-                for row in reader:
-                    trait = row['SPECIES_TYPE']
-                    if trait:  # Skip empty rows
-                        self._process_row(row, trait)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"DNA設定ファイルが見つかりません: {self.file_path}")
-        except csv.Error as e:
-            raise ValueError(f"CSVファイルの読み込み中にエラーが発生しました: {e}")
+        # Flocking parameters
+        self.separation_distance = tf.constant(SEPARATION_DISTANCE, dtype=tf.float32)
+        self.cohesion_distance = tf.constant(COHESION_DISTANCE, dtype=tf.float32)
+        self.separation_weight = tf.constant(SEPARATION_WEIGHT, dtype=tf.float32)
+        self.cohesion_weight = tf.constant(COHESION_WEIGHT, dtype=tf.float32)
 
-    def _process_row(self, row: Dict[str, str], trait: str):
-        self.config[trait] = {}
-        if row['GLOBAL']:
-            self.config[trait]['GLOBAL'] = self._parse_value(row['GLOBAL'])
-        for species in range(1, 9):
-            if row[str(species)]:
-                self.config[trait][species] = self._parse_value(row[str(species)])
-        for limit in ['Min', 'Max']:
-            if row[limit]:
-                self.config[trait][limit] = self._parse_value(row[limit])
+        # Environmental forces parameters
+        self.center_attraction_weight = tf.constant(CENTER_ATTRACTION_WEIGHT, dtype=tf.float32)
+        self.rotation_strength = tf.constant(ROTATION_STRENGTH, dtype=tf.float32)
+        self.confinement_weight = tf.constant(CONFINEMENT_WEIGHT, dtype=tf.float32)
 
-    @staticmethod
-    def _parse_value(value: str) -> Any:
-        try:
-            return int(value)
-        except ValueError:
-            try:
-                return float(value)
-            except ValueError:
-                return value
+        # Predator-prey parameters
+        self.predator_species = tf.constant([1, 2, 3, 4, 5, 6, 7, 8], dtype=tf.int32)
+        self.prey_species = tf.constant([8, 1, 2, 3, 4, 5, 6, 7], dtype=tf.int32)
+        self.chase_distance = tf.constant(20.0, dtype=tf.float32)
+        self.escape_distance = tf.constant(10.0, dtype=tf.float32)
+        self.chase_weight = tf.constant(25.0, dtype=tf.float32)
+        self.escape_weight = tf.constant(20.0, dtype=tf.float32)
 
-    def get_trait_value(self, trait: str, species: Optional[int] = None) -> Any:
-        if trait not in self.config:
-            raise KeyError(f"指定されたトレイト {trait} が見つかりません。")
+        self.species = tf.Variable(tf.random.uniform([NUM_AGENTS], minval=1, maxval=9, dtype=tf.int32))
 
-        trait_config = self.config[trait]
+    @tf.function
+    def update_positions(self, new_positions):
+        self.positions.assign(tf.constant(new_positions, dtype=tf.float32))
 
-        if species is not None:
-            if species not in trait_config:
-                return trait_config.get('GLOBAL')
-            return trait_config[species]
+    def apply_force_to_shared_memory(self, _forces):
+        forces = self.calculate_forces()
+        np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = forces.numpy()
 
-        return trait_config.get('GLOBAL', next(iter(trait_config.values())))
+    @tf.function
+    def calculate_forces(self):
+        flocking_forces = self._flocking_forces()
+        environment_forces = self._environment_forces()
+        predator_prey_forces = self._predator_prey_behavior()
+        
+        total_forces = flocking_forces + environment_forces + predator_prey_forces
+        return self._limit_magnitude(total_forces, self.max_force)
 
-    def get_trait_range(self, trait: str) -> tuple:
-        if trait not in self.config:
-            raise KeyError(f"指定されたトレイト {trait} が見つかりません。")
+    @tf.function
+    def _flocking_forces(self):
+        distances = self._calculate_distances()
+        separation = self._separation(distances)
+        cohesion = self._cohesion(distances)
+        return self.separation_weight * separation + self.cohesion_weight * cohesion
 
-        trait_config = self.config[trait]
-        min_value = trait_config.get('Min', float('-inf'))
-        max_value = trait_config.get('Max', float('inf'))
+    @tf.function
+    def _environment_forces(self):
+        center_attraction = self._center_attraction()
+        circular_confinement = self._circular_confinement()
+        to_center, distances = self._calculate_center_distances()
+        rotation = self._rotation(to_center, distances)
+        return (self.center_attraction_weight * center_attraction +
+                self.confinement_weight * circular_confinement +
+                self.rotation_strength * rotation)
 
-        return (min_value, max_value)
+    @tf.function
+    def _predator_prey_behavior(self):
+        distances = self._calculate_distances()
+        
+        chase_forces = tf.zeros_like(self.positions)
+        escape_forces = tf.zeros_like(self.positions)
+        
+        for i in range(8):  # For each species
+            predator_mask = tf.cast(tf.equal(self.species, self.predator_species[i]), tf.float32)
+            prey_mask = tf.cast(tf.equal(self.species, self.prey_species[i]), tf.float32)
+            
+            # Chase behavior
+            chase_mask = tf.logical_and(
+                distances < self.chase_distance,
+                tf.expand_dims(predator_mask, 1) * tf.expand_dims(prey_mask, 0)
+            )
+            chase_diff = self.positions[:, tf.newaxis, :] - self.positions
+            chase_forces += tf.reduce_sum(
+                chase_diff * tf.cast(chase_mask, tf.float32)[:, :, tf.newaxis],
+                axis=1
+            ) * tf.expand_dims(predator_mask, 1)
+            
+            # Escape behavior
+            escape_mask = tf.logical_and(
+                distances < self.escape_distance,
+                tf.expand_dims(prey_mask, 1) * tf.expand_dims(predator_mask, 0)
+            )
+            escape_diff = self.positions - self.positions[:, tf.newaxis, :]
+            escape_forces += tf.reduce_sum(
+                escape_diff * tf.cast(escape_mask, tf.float32)[:, :, tf.newaxis],
+                axis=1
+            ) * tf.expand_dims(prey_mask, 1)
+        
+        return self.chase_weight * chase_forces + self.escape_weight * escape_forces
 
-    def __getitem__(self, species: int):
-        return DNASpecies(self, species)
+    @tf.function
+    def _separation(self, distances):
+        mask = tf.cast(tf.logical_and(distances < self.separation_distance, distances > 0), tf.float32)
+        diff = self.positions[:, tf.newaxis, :] - self.positions
+        steer = tf.reduce_sum(diff * mask[:, :, tf.newaxis], axis=1)
+        count = tf.reduce_sum(mask, axis=1, keepdims=True)
+        return tf.where(count > 0, steer / count, 0)
 
-class DNASpecies:
-    def __init__(self, dna_manager: DNAManager, species: int):
-        self.dna_manager = dna_manager
-        self.species = species
+    @tf.function
+    def _cohesion(self, distances):
+        mask = tf.cast(tf.logical_and(distances < self.cohesion_distance, distances > 0), tf.float32)
+        center_of_mass = tf.reduce_sum(self.positions * mask[:, :, tf.newaxis], axis=1)
+        count = tf.reduce_sum(mask, axis=1, keepdims=True)
+        center_of_mass = tf.where(count > 0, center_of_mass / count, self.positions)
+        return center_of_mass - self.positions
 
-    def get_trait_value(self, trait: str) -> Any:
-        return self.dna_manager.get_trait_value(trait, self.species)
+    @tf.function
+    def _center_attraction(self):
+        to_center = self.world_center - self.positions
+        return tf.nn.l2_normalize(to_center, axis=1)
+
+    @tf.function
+    def _circular_confinement(self):
+        to_center, distances = self._calculate_center_distances()
+        outside_circle = tf.cast(distances > self.world_radius, tf.float32)
+        confinement_force = outside_circle * (distances - self.world_radius) * to_center / distances
+        return confinement_force
+
+    @tf.function
+    def _rotation(self, to_center, distances):
+        inverse_distance = 1.0 / (distances + 1e-5)
+        rotation_force = tf.stack([to_center[:, 1], -to_center[:, 0]], axis=1)
+        scaled_rotation_force = rotation_force * inverse_distance
+        return tf.nn.l2_normalize(scaled_rotation_force, axis=1)
+
+    @tf.function
+    def _calculate_center_distances(self):
+        to_center = self.world_center - self.positions
+        distances = tf.norm(to_center, axis=1, keepdims=True)
+        return to_center, distances
+
+    @tf.function
+    def _calculate_distances(self):
+        return tf.norm(self.positions[:, tf.newaxis, :] - self.positions, axis=2)
+
+    @tf.function
+    def _limit_magnitude(self, vectors, max_magnitude):
+        magnitudes = tf.norm(vectors, axis=1, keepdims=True)
+        scale = tf.minimum(max_magnitude / magnitudes, 1.0)
+        return vectors * scale
