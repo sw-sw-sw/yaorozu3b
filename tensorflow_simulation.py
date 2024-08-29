@@ -9,12 +9,16 @@ class TensorFlowSimulation:
         self.world_radius = tf.reduce_min(self.world_size) / 2 - 10
         self.positions = tf.Variable(tf.random.uniform([NUM_AGENTS, 2], 0, 1, dtype=tf.float32) * self.world_size)
         self.max_force = tf.constant(MAX_FORCE, dtype=tf.float32)
+
         self.separation_distance = tf.Variable(SEPARATION_DISTANCE, dtype=tf.float32)
         self.cohesion_distance = tf.constant(COHESION_DISTANCE, dtype=tf.float32)
         self.separation_weight = tf.constant(SEPARATION_WEIGHT, dtype=tf.float32)
         self.cohesion_weight = tf.constant(COHESION_WEIGHT, dtype=tf.float32)
-        self.center_attraction_weight = tf.constant(CENTER_ATTRACTION_WEIGHT, dtype=tf.float32)  # 新しい重み
+
+        self.center_attraction_weight = tf.constant(CENTER_ATTRACTION_WEIGHT, dtype=tf.float32)
+        self.rotation_strength = tf.constant(ROTATION_STRENGTH, dtype=tf.float32)
         self.confinement_weight = tf.constant(CONFINEMENT_WEIGHT, dtype=tf.float32)
+
     @tf.function
     def _update_positions(self, new_positions):
         self.positions.assign(new_positions)
@@ -27,18 +31,32 @@ class TensorFlowSimulation:
         new_forces = self.calculate_forces()
         np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = np.array(new_forces)
 
+    # ------------------ calculate forces ---------------------
+
     @tf.function
-    def calculate_forces(self):
-        distances = tf.norm(self.positions[:, tf.newaxis, :] - self.positions, axis=2)
+    def individual_forces(self):
+        distances = self._calculate_distances()
         separation = self._separation(distances)
         cohesion = self._cohesion(distances)
-        center_attraction = self._center_attraction()
-        confinement = self._circular_confinement()# 新しい中心力関数
         forces = (self.separation_weight * separation +
-                  self.cohesion_weight * cohesion +
-                  self.confinement_weight * confinement +
-                  self.center_attraction_weight * center_attraction)  # 中心力を追加
+                  self.cohesion_weight * cohesion)
         return self._limit_magnitude(forces, self.max_force)
+
+    @tf.function
+    def environment_forces(self):
+        center_attraction = self._center_attraction()
+        circular_confinement = self._circular_confinement()
+        rotation = self._rotation()
+        forces = (self.center_attraction_weight * center_attraction +
+                  self.confinement_weight * circular_confinement +
+                  self.rotation_strength * rotation)
+        return forces
+
+    @tf.function
+    def calculate_forces(self):
+        return self.individual_forces() + self.environment_forces()
+
+    # ---------------each force module ------------------------
 
     @tf.function
     def _separation(self, distances):
@@ -58,11 +76,7 @@ class TensorFlowSimulation:
 
     @tf.function
     def _center_attraction(self):
-        # ワールドの中心を計算
-        world_center = self.world_size / 2
-        # 各エージェントから中心への方向ベクトルを計算
-        to_center = world_center - self.positions
-        # 方向ベクトルを正規化（単位ベクトル化）
+        to_center = self.world_center - self.positions
         return tf.nn.l2_normalize(to_center, axis=1)
 
     @tf.function
@@ -74,6 +88,19 @@ class TensorFlowSimulation:
         return confinement_force
 
     @tf.function
+    def _rotation(self):
+        relative_pos = self.positions - self.world_center
+        rotation_force = tf.stack([-relative_pos[:, 1], relative_pos[:, 0]], axis=1)
+        return tf.nn.l2_normalize(rotation_force, axis=1)
+
+    # --------------- sub routine ------------------------
+
+    @tf.function
+    def _calculate_distances(self):
+        return tf.norm(self.positions[:, tf.newaxis, :] - self.positions, axis=2)
+
+    @tf.function
     def _limit_magnitude(self, vectors, max_magnitude):
         magnitudes = tf.norm(vectors, axis=1, keepdims=True)
-        return tf.where(magnitudes > max_magnitude, vectors * max_magnitude / magnitudes, vectors)
+        scale = tf.minimum(max_magnitude / magnitudes, 1.0)
+        return vectors * scale

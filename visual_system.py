@@ -14,31 +14,50 @@ class VisualSystem:
         self.running = running
         self.timer = Timer("Render ")
         self.creatures: Dict[int, Creature] = {}
+        
+    #------------------display setting ---------------------
         self.rotation_angle = 0
-        self.rotation_speed = 0.1  # 1フレームあたりの回転角度（度）
+        self.rotation_speed = 0.0  # 1フレームあたりの回転角度（度）
         self.world_surface = pygame.Surface((WORLD_WIDTH, WORLD_HEIGHT))
+        self.zoom_factor = 1.0  # 追加: 拡大縮小の度合い
+        self.rotation_enabled = False
+        self.zoom_enabled = False
 
+    # ----------------- initialize agent ----------------------
     def create_creature(self, agent_id: int, agent_species: int, x: float, y: float) -> Creature:
         creature = Creature(agent_species, pygame.Vector2(x, y))
         self.creatures[agent_id] = creature
         return creature
 
+    # ----------------- update agent position ---------------------- 
     def update_creature(self, agent_id: int, x: float, y: float):
         if agent_id in self.creatures:
             self.creatures[agent_id].update(pygame.Vector2(x, y))
 
+    # ------------------- draw & render --------------------
     def draw(self):
         self.world_surface.fill(BACKGROUND_COLOR)
-        
+
         for creature in self.creatures.values():
             creature.draw(self.world_surface)
 
-        # 回転した世界を画面に描画
-        rotated_surface = pygame.transform.rotate(self.world_surface, self.rotation_angle)
-        rotated_rect = rotated_surface.get_rect(center=(WORLD_WIDTH//2, WORLD_HEIGHT//2))
-        self.screen.fill(BACKGROUND_COLOR)
-        self.screen.blit(rotated_surface, rotated_rect)
+    # --------------rotation & scaling ------------------------
+    
+        surface_to_draw = self.world_surface
         
+        if self.rotation_enabled:
+            surface_to_draw = pygame.transform.rotate(surface_to_draw, self.rotation_angle)
+
+        if self.zoom_enabled:
+            surface_to_draw = pygame.transform.smoothscale(surface_to_draw, 
+                                (int(surface_to_draw.get_width() * self.zoom_factor),
+                                int(surface_to_draw.get_height() * self.zoom_factor)))
+            
+   
+        rect = surface_to_draw.get_rect(center=(WORLD_WIDTH//2, WORLD_HEIGHT//2))
+        self.screen.fill(BACKGROUND_COLOR)
+        self.screen.blit(surface_to_draw, rect)
+
         pygame.display.flip()
 
         # 回転角度を更新
@@ -73,6 +92,11 @@ class VisualSystem:
                 if event.type == pygame.QUIT:
                     self.running.value = False
                     return
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
+                        self.zoom_factor *= 1.1  # 拡大
+                    elif event.key == pygame.K_MINUS:
+                        self.zoom_factor /= 1.1  # 縮小
             self.render()
             self.timer.print_fps(1)        
             clock.tick(RENDER_FPS)

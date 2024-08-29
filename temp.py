@@ -1,85 +1,74 @@
-from Box2D import b2World, b2Vec2, b2BodyDef, b2_staticBody, b2_dynamicBody, b2CircleShape, b2FixtureDef
+import tensorflow as tf
 from config import *
 import numpy as np
-import logging
 
-logger = logging.getLogger(__name__)
-
-class Box2DSimulation:
+class TensorFlowSimulation:
     def __init__(self, queues):
-        self.world = b2World(gravity=(0, 0), doSleep=True)
-        self.bodies = []
-        self._rendering_queue = queues['rendering_queue']
-        self._eco_to_box2d_creatures = queues['eco_to_box2d_creatures']
-        self.positions = np.zeros((NUM_AGENTS, 2), dtype=np.float32)
-        self.world_radius = min(WORLD_WIDTH, WORLD_HEIGHT) / 2
-        self.world_center = b2Vec2(WORLD_WIDTH / 2, WORLD_HEIGHT / 2)
-        self.center_force_strength = CENTER_FORCE_STRENGTH
-        self._create_boundary()
+        self.world_size = tf.constant([WORLD_WIDTH, WORLD_HEIGHT], dtype=tf.float32)
+        self.positions = tf.Variable(tf.random.uniform([NUM_AGENTS, 2], 0, 1, dtype=tf.float32) * self.world_size)
+        self.max_force = tf.constant(MAX_FORCE, dtype=tf.float32)
+        self.separation_distance = tf.Variable(SEPARATION_DISTANCE, dtype=tf.float32)
+        self.cohesion_distance = tf.constant(COHESION_DISTANCE, dtype=tf.float32)
+        self.separation_weight = tf.constant(SEPARATION_WEIGHT, dtype=tf.float32)
+        self.cohesion_weight = tf.constant(COHESION_WEIGHT, dtype=tf.float32)
+        
+        # 回転力の強さを制御するパラメータ
+        self.rotation_strength = tf.constant(0.1, dtype=tf.float32)
 
-    def _create_boundary(self):
-        boundary_def = b2BodyDef(
-            position=self.world_center,
-            type=b2_staticBody
-        )
-        boundary_body = self.world.CreateBody(boundary_def)
-        boundary_shape = b2CircleShape(radius=self.world_radius)
-        boundary_fixture = boundary_body.CreateFixture(
-            shape=boundary_shape,
-            density=0,
-            friction=0.3,
-            restitution=0.5
-        )
+    @tf.function
+    def _update_positions(self, new_positions):
+        self.positions.assign(new_positions)
 
-    def create_bodies(self):
-        for _ in range(NUM_AGENTS):
-            creature_info = self._eco_to_box2d_creatures.get()
-            self._create_body(creature_info)
-        logger.info(f"Created {NUM_AGENTS} bodies in Box2D simulation")
+    def update_positions(self, _positions):
+        positions = np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))
+        self._update_positions(tf.constant(positions, dtype=tf.float32))
 
-    def _create_body(self, creature_info):
-        body_def = b2BodyDef(
-            type=b2_dynamicBody,
-            position=b2Vec2(creature_info['x'], creature_info['y']),
-            linearVelocity=b2Vec2(0, 0),
-            linearDamping=LINEAR_DAMPING
-        )
-        body = self.world.CreateBody(body_def)
-        circle_shape = b2CircleShape(radius=creature_info['radius'])
-        fixture_def = b2FixtureDef(
-            shape=circle_shape,
-            density=AGENT_DENSITY,
-            friction=AGENT_FRICTION,
-            restitution=AGENT_RESTITUTION
-        )
-        body.CreateFixture(fixture_def)
-        body.mass = AGENT_MASS
-        self.bodies.append(body)
+    def apply_force_to_shared_memory(self, _forces):
+        new_forces = self.calculate_forces()
+        np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = np.array(new_forces)
 
-    def apply_forces_to_box2d(self, _forces):
-        forces = np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))
-        for body, force in zip(self.bodies, forces):
-            body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
+    @tf.function
+    def calculate_forces(self):
+        distances = tf.norm(self.positions[:, tf.newaxis, :] - self.positions, axis=2)
+        separation = self._separation(distances)
+        cohesion = self._cohesion(distances)
+        rotation = self._rotation()
+        forces = self.separation_weight * separation + self.cohesion_weight * cohesion + rotation
+        return self._limit_magnitude(forces, self.max_force)
 
-    def apply_center_force(self):
-        for body in self.bodies:
-            to_center = self.world_center - body.position
-            distance = to_center.length
-            if distance > 0:
-                force = to_center.normalize() * self.center_force_strength * body.mass
-                body.ApplyForceToCenter(force, wake=True)
+    @tf.function
+    def _separation(self, distances):
+        mask = tf.cast(tf.logical_and(distances < self.separation_distance, distances > 0), tf.float32)
+        diff = self.positions[:, tf.newaxis, :] - self.positions
+        steer = tf.reduce_sum(diff * mask[:, :, tf.newaxis], axis=1)
+        count = tf.reduce_sum(mask, axis=1, keepdims=True)
+        return tf.where(count > 0, steer / count, 0)
 
-    def apply_positions_to_shared_memory(self, _positions):
-        positions = self.get_positions()
-        np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = positions
+    @tf.function
+    def _cohesion(self, distances):
+        mask = tf.cast(tf.logical_and(distances < self.cohesion_distance, distances > 0), tf.float32)
+        center_of_mass = tf.reduce_sum(self.positions * mask[:, :, tf.newaxis], axis=1)
+        count = tf.reduce_sum(mask, axis=1, keepdims=True)
+        center_of_mass = tf.where(count > 0, center_of_mass / count, self.positions)
+        return center_of_mass - self.positions
 
-    def step(self):
-        self.apply_center_force()
-        self.world.Step(DT, 6, 2)
+    @tf.function
+    def _rotation(self):
+        # 画面中心を計算
+        center = self.world_size / 2
 
-    def get_positions(self):
-        return np.array([(body.position.x, body.position.y) for body in self.bodies], dtype=np.float32)
+        # エージェントと中心との相対位置を計算
+        relative_pos = self.positions - center
 
-    def add_positions_to_render_queue(self):
-        if self._rendering_queue.empty():
-            self._rendering_queue.put(self.get_positions())
+        # 回転力を計算 (反時計回り)
+        rotation_force = tf.stack([-relative_pos[:, 1], relative_pos[:, 0]], axis=1)
+
+        # 回転力を正規化し、強さを調整
+        rotation_force = self._limit_magnitude(rotation_force, 1.0) * self.rotation_strength
+
+        return rotation_force
+
+    @tf.function
+    def _limit_magnitude(self, vectors, max_magnitude):
+        magnitudes = tf.norm(vectors, axis=1, keepdims=True)
+        return tf.where(magnitudes > max_magnitude, vectors * max_magnitude / magnitudes, vectors)

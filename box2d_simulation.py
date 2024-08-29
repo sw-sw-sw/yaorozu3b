@@ -16,9 +16,11 @@ class Box2DSimulation:
         self.positions = np.zeros((NUM_AGENTS, 2), dtype=np.float32)
         # for radom velocity
         self.last_random_velocity_time = time.time()
+    #------------------ random move ---------------------
         self.random_velocity_interval = 0.01  # Apply random velocity every 1 second
-        self.random_speed= 10
+        self.random_speed= 30
         
+    #------------------- initialize --------------------    
     def create_bodies(self):
         for _ in range(NUM_AGENTS):
             creature_info = self._eco_to_box2d_creatures.get()
@@ -38,7 +40,7 @@ class Box2DSimulation:
                            friction=AGENT_FRICTION, restitution=AGENT_RESTITUTION)
         body.mass = AGENT_MASS * creature_info['radius']
         self.bodies.append(body)
-
+    # ------------------ update ---------------------
     def apply_forces_to_box2d(self, _forces):
         forces = np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))
         for body, force in zip(self.bodies, forces):
@@ -48,6 +50,14 @@ class Box2DSimulation:
         positions = self.get_positions()
         np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((NUM_AGENTS, 2))[:] = positions
 
+    def get_positions(self):
+        return np.array([(body.position.x, body.position.y) for body in self.bodies], dtype=np.float32)
+
+    def add_positions_to_render_queue(self):
+        if self._rendering_queue.empty():
+            self._rendering_queue.put(self.get_positions())
+            
+    # -----------------random move ----------------------
     def apply_random_velocity(self):
         current_time = time.time()
         if current_time - self.last_random_velocity_time >= self.random_velocity_interval:
@@ -58,14 +68,8 @@ class Box2DSimulation:
             )
             random_body.linearVelocity = random_velocity
             self.last_random_velocity_time = current_time
-
+    # -----------------to renderer ----------------------
+    
     def step(self):
         self.world.Step(DT, 6, 2)
-        self.apply_random_velocity()
-
-    def get_positions(self):
-        return np.array([(body.position.x, body.position.y) for body in self.bodies], dtype=np.float32)
-
-    def add_positions_to_render_queue(self):
-        if self._rendering_queue.empty():
-            self._rendering_queue.put(self.get_positions())
+        # self.apply_random_velocity() # random move
