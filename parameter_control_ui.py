@@ -1,5 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
+import json
+import os
 
 class ParameterControlUI:
     def __init__(self, root, update_callback):
@@ -8,6 +10,7 @@ class ParameterControlUI:
         self.update_callback = update_callback
         self.sliders = {}
         self.create_sliders()
+        self.root.bind('<s>', self.save_settings)  # Add key binding for 's'
 
     def create_sliders(self):
         parameters = [
@@ -28,6 +31,10 @@ class ParameterControlUI:
             slider.bind("<ButtonRelease-1>", lambda event, param=param_name: self.update_parameter(param, event.widget.get()))
             self.sliders[param_name] = slider
 
+        # Add a label to show save status
+        self.status_label = ttk.Label(self.root, text="")
+        self.status_label.grid(row=len(parameters), column=0, columnspan=2, pady=10)
+
     def update_parameter(self, param_name, value):
         self.update_callback(param_name, value)
 
@@ -35,3 +42,22 @@ class ParameterControlUI:
         for param_name, value in values.items():
             if param_name in self.sliders:
                 self.sliders[param_name].set(value)
+
+    def save_settings(self, event=None):
+        settings = {param: slider.get() for param, slider in self.sliders.items()}
+        filename = 'simulation_settings.json'
+        with open(filename, 'w') as f:
+            json.dump(settings, f, indent=4)
+        self.status_label.config(text=f"Settings saved to {filename}")
+        self.root.after(3000, lambda: self.status_label.config(text=""))  # Clear message after 3 seconds
+
+    def load_settings(self):
+        filename = 'simulation_settings.json'
+        if os.path.exists(filename):
+            with open(filename, 'r') as f:
+                settings = json.load(f)
+            self.set_initial_values(settings)
+            for param, value in settings.items():
+                self.update_callback(param, value)
+            self.status_label.config(text=f"Settings loaded from {filename}")
+            self.root.after(3000, lambda: self.status_label.config(text=""))  # Clear message after 3 seconds
