@@ -1,6 +1,7 @@
 import tensorflow as tf
 from config import *
 import numpy as np
+from dna_manager import DNAManager
 
 class TensorFlowSimulation:
     def __init__(self, queues):
@@ -21,6 +22,15 @@ class TensorFlowSimulation:
         self.rotation_strength = tf.constant(ROTATION_STRENGTH, dtype=tf.float32)
         self.confinement_weight = tf.constant(CONFINEMENT_WEIGHT, dtype=tf.float32)
 
+        self.dna_manager = DNAManager()
+        self.escape_distance = tf.constant(self.dna_manager.get_trait_value('ESCAPE_DISTANCE'), dtype=tf.float32)
+        self.escape_weight = tf.constant(self.dna_manager.get_trait_value('ESCAPE_WEIGHT'), dtype=tf.float32)
+        self.chase_distance = tf.constant(self.dna_manager.get_trait_value('CHASE_DISTANCE'), dtype=tf.float32)
+        self.chase_weight = tf.constant(self.dna_manager.get_trait_value('CHASE_WEIGHT'), dtype=tf.float32)
+
+        # 種別情報の初期化
+        self.species = tf.Variable(tf.zeros([MAX_AGENTS_NUM], dtype=tf.int32))
+        
     @tf.function
     def _update_positions(self, new_positions):
         self.positions.assign(new_positions)
@@ -34,12 +44,40 @@ class TensorFlowSimulation:
         np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((MAX_AGENTS_NUM, 2))[:] = np.array(new_forces)
 
     @tf.function
+    def _predator_prey_forces(self):
+        distances = self._calculate_distances()
+        
+        # 捕食者と獲物の関係を決定
+        predator_mask = tf.equal(self.species[:, tf.newaxis], 
+                                 tf.constant(self.dna_manager.get_trait_value('PREDATOR_SPECIES')))
+        prey_mask = tf.equal(self.species[:, tf.newaxis], 
+                             tf.constant(self.dna_manager.get_trait_value('PREY_SPECIES')))
+
+        # 逃避力の計算
+        escape_mask = tf.cast(tf.logical_and(distances < self.escape_distance, predator_mask), tf.float32)
+        escape_force = tf.reduce_sum(
+            (self.positions[:, tf.newaxis, :] - self.positions) * escape_mask[:, :, tf.newaxis], 
+            axis=1
+        ) * self.escape_weight
+
+        # 追跡力の計算
+        chase_mask = tf.cast(tf.logical_and(distances < self.chase_distance, prey_mask), tf.float32)
+        chase_force = tf.reduce_sum(
+            (self.positions - self.positions[:, tf.newaxis, :]) * chase_mask[:, :, tf.newaxis], 
+            axis=1
+        ) * self.chase_weight
+
+        return escape_force + chase_force
+    
+    @tf.function
     def _species_forces(self):
         distances = self._calculate_distances()
         separation = self._separation(distances)
         cohesion = self._cohesion(distances)
+        predator_prey = self._predator_prey_forces()
         forces = (self.separation_weight * separation +
-                  self.cohesion_weight * cohesion)
+                  self.cohesion_weight * cohesion + predator_prey)
+        
         return self._limit_magnitude(forces, self.max_force)
 
     @tf.function
@@ -119,4 +157,7 @@ class TensorFlowSimulation:
         magnitudes = tf.norm(vectors, axis=1, keepdims=True)
         scale = tf.minimum(max_magnitude / magnitudes, 1.0)
         return vectors * scale
-    
+
+    def update_species(self, _species):
+        species = np.frombuffer(_species.get_obj(), dtype=np.int32)
+        self.species.assign(tf.constant(species, dtype=tf.int32))

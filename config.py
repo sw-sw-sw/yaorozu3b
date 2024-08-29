@@ -23,9 +23,9 @@ RANDOM_SPEED = 40
 # ------------------ Common species parameters ---------------------
 # Flocking parameters
 SEPARATION_DISTANCE = 20.0
-SEPARATION_WEIGHT = 50
-COHESION_DISTANCE = 300.0
-COHESION_WEIGHT = 400
+SEPARATION_WEIGHT = 10
+COHESION_DISTANCE = 30.0
+COHESION_WEIGHT = 40
 
 # Initial velocity range
 INITIAL_VELOCITY_MIN = -200

@@ -41,6 +41,7 @@ def tf_run(queues, shared_memory, running, initialization_complete):
     while running.value:
         timer.start()
         tensorflow.update_positions(shared_memory['positions'])
+        tensorflow.update_species(shared_memory['agent_species'])
         tensorflow.apply_force_to_shared_memory(shared_memory['forces'])
         shared_memory['tf_time'].value = timer.calculate_time()
         timer.sleep_time(shared_memory['box2d_time'].value)
