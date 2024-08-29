@@ -5,22 +5,26 @@ from dna_manager import DNAManager
 
 class TensorFlowSimulation:
     def __init__(self, queues):
+        
+        self.queues = queues
+        self.ui_to_tensorflow_queue = queues['ui_to_tensorflow']
+        
         self.world_size = tf.constant([WORLD_WIDTH, WORLD_HEIGHT], dtype=tf.float32)
         self.world_center = self.world_size / 2
         self.world_radius = tf.reduce_min(self.world_size) / 2 - 10
         self.positions = tf.Variable(tf.zeros([MAX_AGENTS_NUM, 2], dtype=tf.float32))
-        self.max_force = tf.constant(MAX_FORCE, dtype=tf.float32)
+        self.max_force = tf.Variable(MAX_FORCE, dtype=tf.float32)
 
         # Flocking parameters
-        self.separation_distance = tf.constant(SEPARATION_DISTANCE, dtype=tf.float32)
-        self.cohesion_distance = tf.constant(COHESION_DISTANCE, dtype=tf.float32)
-        self.separation_weight = tf.constant(SEPARATION_WEIGHT, dtype=tf.float32)
-        self.cohesion_weight = tf.constant(COHESION_WEIGHT, dtype=tf.float32)
+        self.separation_distance = tf.Variable(SEPARATION_DISTANCE, dtype=tf.float32)
+        self.cohesion_distance = tf.Variable(COHESION_DISTANCE, dtype=tf.float32)
+        self.separation_weight = tf.Variable(SEPARATION_WEIGHT, dtype=tf.float32)
+        self.cohesion_weight = tf.Variable(COHESION_WEIGHT, dtype=tf.float32)
 
         # Environmental forces parameters
-        self.center_attraction_weight = tf.constant(CENTER_ATTRACTION_WEIGHT, dtype=tf.float32)
-        self.rotation_strength = tf.constant(ROTATION_STRENGTH, dtype=tf.float32)
-        self.confinement_weight = tf.constant(CONFINEMENT_WEIGHT, dtype=tf.float32)
+        self.center_attraction_weight = tf.Variable(CENTER_ATTRACTION_WEIGHT, dtype=tf.float32)
+        self.rotation_strength = tf.Variable(ROTATION_STRENGTH, dtype=tf.float32)
+        self.confinement_weight = tf.Variable(CONFINEMENT_WEIGHT, dtype=tf.float32)
 
         self.dna_manager = DNAManager()
         self.escape_distance = tf.constant(self.dna_manager.get_trait_value('ESCAPE_DISTANCE'), dtype=tf.float32)
@@ -161,3 +165,10 @@ class TensorFlowSimulation:
     def update_species(self, _species):
         species = np.frombuffer(_species.get_obj(), dtype=np.int32)
         self.species.assign(tf.constant(species, dtype=tf.int32))
+        
+    def update_parameters(self, shared_memory):
+        while not self.ui_to_tensorflow_queue.empty():
+            param_name, value = self.ui_to_tensorflow_queue.get()
+            if hasattr(self, param_name):
+                getattr(self, param_name).assign(value)
+                shared_memory[param_name].value = value

@@ -98,6 +98,6 @@ class VisualSystem:
                     elif event.key == pygame.K_MINUS:
                         self.zoom_factor /= 1.1  # 縮小
             self.render()
-            self.timer.print_fps(1)        
+            self.timer.print_fps(5)        
             clock.tick(RENDER_FPS)
         pygame.quit()

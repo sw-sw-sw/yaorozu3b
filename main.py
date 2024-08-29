@@ -11,6 +11,9 @@ from box2d_simulation import Box2DSimulation
 from visual_system import VisualSystem
 from timer import Timer
 from ecosystem import Ecosystem
+import multiprocessing as mp
+from parameter_control_ui import ParameterControlUI  
+import tkinter as tk 
 
 def setup_logging():
     logging.basicConfig(level=logging.INFO, 
@@ -26,6 +29,44 @@ def monitor_resources():
         memory_percent = psutil.virtual_memory().percent
         logger.info(f"CPU usage: {cpu_percent}%, Memory usage: {memory_percent}%")
         time.sleep(5)
+
+def run_parameter_control_ui(shared_memory, queues, running):
+    root = tk.Tk()
+    ui_to_tensorflow_queue = queues['ui_to_tensorflow']
+
+    def update_callback(param_name, value):
+        shared_memory[param_name].value = value
+        ui_to_tensorflow_queue.put((param_name, value))
+
+    ui = ParameterControlUI(root, update_callback)
+
+    # 初期値の設定
+    initial_values = {
+        'separation_distance': shared_memory['separation_distance'].value,
+        'separation_weight': shared_memory['separation_weight'].value,
+        'cohesion_distance': shared_memory['cohesion_distance'].value,
+        'cohesion_weight': shared_memory['cohesion_weight'].value,
+        'max_force': shared_memory['max_force'].value,
+        'center_attraction_weight': shared_memory['center_attraction_weight'].value,
+        'confinement_weight': shared_memory['confinement_weight'].value,
+        'rotation_strength': shared_memory['rotation_strength'].value
+    }
+    ui.set_initial_values(initial_values)
+
+    def on_closing():
+        running.value = False
+        root.quit()
+
+    root.protocol("WM_DELETE_WINDOW", on_closing)
+
+    def check_running():
+        if running.value:
+            root.after(100, check_running)
+        else:
+            root.quit()
+
+    root.after(100, check_running)
+    root.mainloop()
 
 def eco_run(queues, shared_memory, running, initialization_complete):
     ecosystem = Ecosystem(queues)
@@ -43,9 +84,11 @@ def tf_run(queues, shared_memory, running, initialization_complete):
         tensorflow.update_positions(shared_memory['positions'])
         tensorflow.update_species(shared_memory['agent_species'])
         tensorflow.apply_force_to_shared_memory(shared_memory['forces'])
+        tensorflow.update_parameters(shared_memory)
+        
         shared_memory['tf_time'].value = timer.calculate_time()
         timer.sleep_time(shared_memory['box2d_time'].value)
-        timer.print_fps(1)
+        timer.print_fps(5)
 
 def box2d_run(queues, shared_memory, running, initialization_complete):
     box2d = Box2DSimulation(queues)
@@ -61,7 +104,7 @@ def box2d_run(queues, shared_memory, running, initialization_complete):
         box2d.add_positions_to_render_queue()
         shared_memory['box2d_time'].value = timer.calculate_time()
         timer.sleep_time(shared_memory['tf_time'].value)
-        timer.print_fps(1)
+        timer.print_fps(5)
 
 def visual_system_run(queues, shared_memory, running, initialization_complete):
     visual_system = VisualSystem(queues, running)
@@ -80,8 +123,18 @@ def run_simulation():
         'current_agent_count': mp.Value('i', 0),
         'tf_time': mp.Value('d', 0.0),
         'box2d_time': mp.Value('d', 0.0),
-        'lock': mp.Lock()
+        'lock': mp.Lock(),
+        # 新しいパラメータを追加
+        'separation_distance': mp.Value('f', SEPARATION_DISTANCE),
+        'separation_weight': mp.Value('f', SEPARATION_WEIGHT),
+        'cohesion_distance': mp.Value('f', COHESION_DISTANCE),
+        'cohesion_weight': mp.Value('f', COHESION_WEIGHT),
+        'max_force': mp.Value('f', MAX_FORCE),
+        'center_attraction_weight': mp.Value('f', CENTER_ATTRACTION_WEIGHT),
+        'confinement_weight': mp.Value('f', CONFINEMENT_WEIGHT),
+        'rotation_strength': mp.Value('f', ROTATION_STRENGTH)
     }
+
 
     running = mp.Value('b', True)
     queues = {
@@ -94,6 +147,7 @@ def run_simulation():
         'visual_to_eco': mp.Queue(),
         'tensorflow_to_eco': mp.Queue(),
         'rendering_queue': mp.Queue(maxsize=1),
+        'ui_to_tensorflow': mp.Queue()  # 新しく追加
     }
 
     initialization_complete = {
@@ -107,8 +161,9 @@ def run_simulation():
         mp.Process(target=eco_run, args=(queues, shared_memory, running, initialization_complete['Ecosystem']), name='Ecosystem'),
         mp.Process(target=tf_run, args=(queues, shared_memory, running, initialization_complete['TensorFlow']), name="TensorFlow"),
         mp.Process(target=box2d_run, args=(queues, shared_memory, running, initialization_complete['Box2D']), name="Box2D"),
-        mp.Process(target=visual_system_run, args=(queues, shared_memory, running, initialization_complete['Visual']), name="Visual")
-    ]
+        mp.Process(target=visual_system_run, args=(queues, shared_memory, running, initialization_complete['Visual']), name="Visual"),
+        mp.Process(target=run_parameter_control_ui, args=(shared_memory, queues, running), name="ParameterControlUI")  # 新しく追加
+]
 
     for process in processes:
         logger.info(f"Starting {process.name} process")
