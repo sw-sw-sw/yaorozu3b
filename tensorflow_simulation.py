@@ -39,7 +39,9 @@ class TensorFlowSimulation:
         separation = self._separation(distances)
         cohesion = self._cohesion(distances)
         forces = (self.separation_weight * separation +
-                  self.cohesion_weight * cohesion)
+                  self.cohesion_weight * cohesion +
+                  predator_prey)
+                  predator_prey)
         return self._limit_magnitude(forces, self.max_force)
 
     @tf.function
