@@ -2,7 +2,7 @@
 # Simulation parameters
 WORLD_WIDTH = 2000
 WORLD_HEIGHT = 2000
-MAX_AGENTS_NUM = 1000
+MAX_AGENTS_NUM = 3000
 
 # Simulation speed
 RENDER_FPS = 240

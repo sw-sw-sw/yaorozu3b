@@ -1,0 +1,10 @@
+{
+    "separation_distance": 34.090909090909086,
+    "separation_weight": 5.0,
+    "cohesion_distance": 100.0,
+    "cohesion_weight": 10.0,
+    "max_force": 250.0,
+    "center_attraction_weight": 60.0,
+    "confinement_weight": 80.0,
+    "rotation_strength": 300.0
+}
