@@ -46,7 +46,8 @@ class TensorFlowSimulation:
     def environment_forces(self):
         center_attraction = self._center_attraction()
         circular_confinement = self._circular_confinement()
-        rotation = self._rotation()
+        to_center, distances = self._calculate_center_distances()
+        rotation = self._rotation(to_center, distances)
         forces = (self.center_attraction_weight * center_attraction +
                   self.confinement_weight * circular_confinement +
                   self.rotation_strength * rotation)
@@ -78,23 +79,37 @@ class TensorFlowSimulation:
     def _center_attraction(self):
         to_center = self.world_center - self.positions
         return tf.nn.l2_normalize(to_center, axis=1)
-
+    
     @tf.function
     def _circular_confinement(self):
-        to_center = self.world_center - self.positions
-        distances = tf.norm(to_center, axis=1, keepdims=True)
+        to_center, distances = self._calculate_center_distances()
         outside_circle = tf.cast(distances > self.world_radius, tf.float32)
         confinement_force = outside_circle * (distances - self.world_radius) * to_center / distances
         return confinement_force
 
+    # @tf.function
+    # def _rotation(self):
+    #     relative_pos = self.positions - self.world_center
+    #     rotation_force = tf.stack([-relative_pos[:, 1], relative_pos[:, 0]], axis=1)
+    #     return tf.nn.l2_normalize(rotation_force, axis=1)
+
     @tf.function
-    def _rotation(self):
-        relative_pos = self.positions - self.world_center
-        rotation_force = tf.stack([-relative_pos[:, 1], relative_pos[:, 0]], axis=1)
-        return tf.nn.l2_normalize(rotation_force, axis=1)
+    def _rotation(self, to_center, distances):
+        # 距離の逆数を計算（中心に近いほど大きな値になる）
+        inverse_distance = 1.0 / (distances + 1e-5)  # ゼロ除算を防ぐために小さな値を加える
+        rotation_force = tf.stack([to_center[:, 1], -to_center[:, 0]], axis=1)
+        # 回転力を距離の逆数でスケーリング
+        scaled_rotation_force = rotation_force * inverse_distance
+        # 正規化して方向を保持
+        return tf.nn.l2_normalize(scaled_rotation_force, axis=1)
 
     # --------------- sub routine ------------------------
-
+    @tf.function
+    def _calculate_center_distances(self):
+        to_center = self.world_center - self.positions
+        distances = tf.norm(to_center, axis=1, keepdims=True)
+        return to_center, distances
+    
     @tf.function
     def _calculate_distances(self):
         return tf.norm(self.positions[:, tf.newaxis, :] - self.positions, axis=2)

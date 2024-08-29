@@ -17,8 +17,9 @@ class Box2DSimulation:
         # for radom velocity
         self.last_random_velocity_time = time.time()
     #------------------ random move ---------------------
-        self.random_velocity_interval = 0.01  # Apply random velocity every 1 second
-        self.random_speed= 30
+    
+        self.random_velocity_interval = RANDOM_VELOCITY_INTERVAL
+        self.random_speed= RANDOM_SPEED
         
     #------------------- initialize --------------------    
     def create_bodies(self):
@@ -58,6 +59,7 @@ class Box2DSimulation:
             self._rendering_queue.put(self.get_positions())
             
     # -----------------random move ----------------------
+    
     def apply_random_velocity(self):
         current_time = time.time()
         if current_time - self.last_random_velocity_time >= self.random_velocity_interval:
@@ -68,8 +70,9 @@ class Box2DSimulation:
             )
             random_body.linearVelocity = random_velocity
             self.last_random_velocity_time = current_time
+            
     # -----------------to renderer ----------------------
     
     def step(self):
         self.world.Step(DT, 6, 2)
-        # self.apply_random_velocity() # random move
+        self.apply_random_velocity() # random move

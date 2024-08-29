@@ -99,7 +99,7 @@ class Creature:
             self._flash = False
 
     def get_radius(self):
-        return max(self._size / 2, self._size * self._shell_size / 2 + self._shell_point_size + 2, self._size * self._horn_length / 2)
+        return max(self._size / 2, self._size * self._shell_size / 2 + self._shell_point_size + 2, self._size * self._horn_length / 2) + 1
     
     def _get_color_from_dna(self):
         color_value = int(self.dna.get_trait_value("COLOR"))
