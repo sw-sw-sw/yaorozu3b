@@ -4,6 +4,7 @@ from config import *
 from timer import Timer
 from creature import Creature
 from typing import Dict
+import time
 
 class VisualSystem:
     def __init__(self, queues, running):
@@ -82,6 +83,7 @@ class VisualSystem:
             positions = self._rendering_queue.get()
             for agent_id, pos in enumerate(positions):
                 self.update_creature(agent_id, pos[0], pos[1])
+            time.sleep(0.001)
             self.draw()
 
     def run(self):
