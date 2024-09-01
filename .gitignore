@@ -4,3 +4,5 @@ test_m1_gpu
 CLASS/
 .vscode
 setting/
+temp.py 
+simulation_settings.json
