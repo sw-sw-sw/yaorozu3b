@@ -5,6 +5,7 @@ class DNAManager:
     def __init__(self, file_path: str = 'dna_config.csv'):
         self.file_path = file_path
         self.config: Dict[str, Any] = {}
+        self.cache: Dict[str, Any] = {}  # キャッシュ用の辞書を追加
         self.load_config()
 
     def load_config(self):
@@ -42,18 +43,44 @@ class DNAManager:
                 return value
 
     def get_trait_value(self, trait: str, species: Optional[int] = None) -> Any:
+        # キャッシュキーを作成
+        cache_key = f"{trait}_{species}" if species is not None else trait
+
+        # キャッシュにある場合はキャッシュから返す
+        if cache_key in self.cache:
+            return self.cache[cache_key]
+
         if trait not in self.config:
             raise KeyError(f"指定されたトレイト {trait} が見つかりません。")
 
         trait_config = self.config[trait]
 
         if species is not None:
-            if species not in trait_config:
-                return trait_config.get('GLOBAL')
-            return trait_config[species]
+            value = trait_config.get(species, trait_config.get('GLOBAL'))
+        else:
+            value = trait_config.get('GLOBAL', next(iter(trait_config.values())))
+        # 結果をキャッシュに保存
+        self.cache[cache_key] = value
 
-        return trait_config.get('GLOBAL', next(iter(trait_config.values())))
+        return value
 
+    def clear_cache(self):
+        """キャッシュをクリアするメソッド"""
+        self.cache.clear()
+
+    def update_config(self, trait: str, species: Optional[int], value: Any):
+        """設定を更新し、関連するキャッシュをクリアするメソッド"""
+        if trait not in self.config:
+            raise KeyError(f"指定されたトレイト {trait} が見つかりません。")
+
+        if species is not None:
+            self.config[trait][species] = value
+        else:
+            self.config[trait]['GLOBAL'] = value
+
+        # 関連するキャッシュをクリア
+        cache_key = f"{trait}_{species}" if species is not None else trait
+        self.cache.pop(cache_key, None)
     def get_trait_range(self, trait: str) -> tuple:
         if trait not in self.config:
             raise KeyError(f"指定されたトレイト {trait} が見つかりません。")
