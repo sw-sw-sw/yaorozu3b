@@ -7,12 +7,11 @@ from typing import Dict
 import time
 
 class VisualSystem:
-    def __init__(self, queues, running):
+    def __init__(self, queues):
         pygame.init()
         self._rendering_queue = queues['rendering_queue']
         self._eco_to_visual_creatures = queues['eco_to_visual_creatures']
         self.screen = pygame.display.set_mode((WORLD_WIDTH, WORLD_HEIGHT))
-        self.running = running
         self.timer = Timer("Render ")
         self.creatures: Dict[int, Creature] = {}
         self.all_sprites = pygame.sprite.Group()

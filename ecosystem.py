@@ -3,6 +3,7 @@ import numpy as np
 from config import *
 from creature import Creature
 import pygame
+import time
 
 class Ecosystem:
     def __init__(self, queues):
@@ -60,3 +61,4 @@ class Ecosystem:
             with shared_memory['lock']:
                 # Ecosystem management logic here
                 pass
+            

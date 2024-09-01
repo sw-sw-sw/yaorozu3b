@@ -1,9 +1,6 @@
 import time
 import numpy as np
 import multiprocessing as mp
-import logging
-import sys
-import psutil
 import threading
 from config import *
 from tensorflow_simulation import TensorFlowSimulation
@@ -12,8 +9,13 @@ from visual_system import VisualSystem
 from timer import Timer
 from ecosystem import Ecosystem
 import multiprocessing as mp
-from parameter_control_ui import ParameterControlUI  
 import tkinter as tk 
+from parameter_control_ui import ParameterControlUI  
+import tensorflow as tf
+import logging
+import sys
+import psutil
+import time
 
 def setup_logging():
     logging.basicConfig(level=logging.INFO, 
@@ -29,6 +31,26 @@ def monitor_resources():
         memory_percent = psutil.virtual_memory().percent
         logger.info(f"CPU usage: {cpu_percent}%, Memory usage: {memory_percent}%")
         time.sleep(5)
+
+#--------- shared memory manager ------------
+
+def get_tf_positions(shared_memory):
+    # with shared_memory['lock']:
+    np_array = np.frombuffer(shared_memory['positions'].get_obj(), dtype=np.float32)
+    positions = np_array.reshape((-1, 2))
+    return tf.convert_to_tensor(positions, dtype=tf.float32)
+
+def get_tf_species(shared_memory):
+    # with shared_memory['lock']:
+    species = np.frombuffer(shared_memory['agent_species'].get_obj(), dtype=np.int32)
+    return tf.convert_to_tensor(species, dtype=tf.int32)
+
+def set_forces(shared_memory, forces):
+    # with shared_memory['lock']:
+    np_array = np.frombuffer(shared_memory['forces'].get_obj(), dtype=np.float32)
+    np_array[:] = forces.flatten()
+        
+#---------------------------------------
 
 def run_parameter_control_ui(shared_memory, queues, running):
     root = tk.Tk()
@@ -52,7 +74,8 @@ def run_parameter_control_ui(shared_memory, queues, running):
         'rotation_strength': shared_memory['rotation_strength'].value
     }
     ui.set_initial_values(initial_values)
-
+    
+    
     def on_closing():
         running.value = False
         root.quit()
@@ -67,7 +90,7 @@ def run_parameter_control_ui(shared_memory, queues, running):
 
     root.after(100, check_running)
     root.mainloop()
-
+    
 def eco_run(queues, shared_memory, running, initialization_complete):
     ecosystem = Ecosystem(queues)
     ecosystem.initialize_agents(shared_memory)
@@ -81,14 +104,17 @@ def tf_run(queues, shared_memory, running, initialization_complete):
     
     while running.value:
         timer.start()
-        tensorflow.update_positions(shared_memory['positions'])
-        tensorflow.update_species(shared_memory['agent_species'])
-        tensorflow.apply_force_to_shared_memory(shared_memory['forces'])
-        tensorflow.update_parameters(shared_memory)
+        tf_positions = get_tf_positions(shared_memory)
+        tf_species = get_tf_species(shared_memory)
+        calculated_forces = tensorflow.calculate_forces(tf_positions, tf_species)
+        set_forces(shared_memory, calculated_forces.numpy())
         
+        tensorflow.update_parameters()
+
         shared_memory['tf_time'].value = timer.calculate_time()
         timer.sleep_time(shared_memory['box2d_time'].value)
         timer.print_fps(5)
+        time.sleep(0.005)
         
 
 def box2d_run(queues, shared_memory, running, initialization_complete):
@@ -107,9 +133,11 @@ def box2d_run(queues, shared_memory, running, initialization_complete):
         shared_memory['box2d_time'].value = timer.calculate_time()
         timer.sleep_time(shared_memory['tf_time'].value)
         timer.print_fps(5)
+        
+        time.sleep(0.005)
 
 def visual_system_run(queues, shared_memory, running, initialization_complete):
-    visual_system = VisualSystem(queues, running)
+    visual_system = VisualSystem(queues)
     initialization_complete.set()
     
     while running.value:
@@ -141,7 +169,6 @@ def run_simulation():
         'confinement_weight': mp.Value('f', CONFINEMENT_WEIGHT),
         'rotation_strength': mp.Value('f', ROTATION_STRENGTH)
     }
-
 
     running = mp.Value('b', True)
     queues = {
