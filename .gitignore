@@ -2,3 +2,5 @@ __pycache__/
 .DS_Store
 test_m1_gpu
 CLASS/
+.vscode
+setting/
