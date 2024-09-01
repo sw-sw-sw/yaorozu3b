@@ -15,6 +15,7 @@ class VisualSystem:
         self.running = running
         self.timer = Timer("Render ")
         self.creatures: Dict[int, Creature] = {}
+        self.all_sprites = pygame.sprite.Group()
         
         # Display settings
         self.rotation_angle = 0
@@ -26,9 +27,11 @@ class VisualSystem:
         
         self.clock = pygame.time.Clock()
 
+
     def create_creature(self, agent_id: int, agent_species: int, x: float, y: float) -> Creature:
         creature = Creature(agent_species, pygame.Vector2(x, y))
         self.creatures[agent_id] = creature
+        self.all_sprites.add(creature)
         return creature
 
     def update_creature(self, agent_id: int, x: float, y: float):
@@ -37,12 +40,8 @@ class VisualSystem:
 
     def draw(self):
         self.world_surface.fill(BACKGROUND_COLOR)
+        self.all_sprites.draw(self.world_surface)
 
-        for creature in self.creatures.values():
-            creature.draw(self.world_surface)
-
-    # --------------rotation & scaling ------------------------
-    
         surface_to_draw = self.world_surface
         
         if self.rotation_enabled:
@@ -59,7 +58,6 @@ class VisualSystem:
 
         pygame.display.flip()
 
-        # 回転角度を更新
         self.rotation_angle += self.rotation_speed
         if self.rotation_angle >= 360:
             self.rotation_angle -= 360
@@ -83,6 +81,7 @@ class VisualSystem:
                 self.update_creature(agent_id, pos[0], pos[1])
             time.sleep(0.001)
             self.draw()
+            
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
