@@ -89,6 +89,7 @@ def tf_run(queues, shared_memory, running, initialization_complete):
         shared_memory['tf_time'].value = timer.calculate_time()
         timer.sleep_time(shared_memory['box2d_time'].value)
         timer.print_fps(5)
+        
 
 def box2d_run(queues, shared_memory, running, initialization_complete):
     box2d = Box2DSimulation(queues)
@@ -101,6 +102,7 @@ def box2d_run(queues, shared_memory, running, initialization_complete):
         box2d.apply_forces_to_box2d(shared_memory['forces'])
         box2d.step()
         box2d.apply_positions_to_shared_memory(shared_memory['positions'])
+        
         box2d.add_positions_to_render_queue()
         shared_memory['box2d_time'].value = timer.calculate_time()
         timer.sleep_time(shared_memory['tf_time'].value)
@@ -109,8 +111,13 @@ def box2d_run(queues, shared_memory, running, initialization_complete):
 def visual_system_run(queues, shared_memory, running, initialization_complete):
     visual_system = VisualSystem(queues, running)
     initialization_complete.set()
-    visual_system.run()
+    
+    while running.value:
+        if not visual_system.update():
+            break
 
+    visual_system.cleanup()
+    
 def run_simulation():
     logger.info("Starting simulation")
     

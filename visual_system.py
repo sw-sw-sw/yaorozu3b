@@ -16,26 +16,25 @@ class VisualSystem:
         self.timer = Timer("Render ")
         self.creatures: Dict[int, Creature] = {}
         
-    #------------------display setting ---------------------
+        # Display settings
         self.rotation_angle = 0
-        self.rotation_speed = 0.0  # 1フレームあたりの回転角度（度）
+        self.rotation_speed = 0.0
         self.world_surface = pygame.Surface((WORLD_WIDTH, WORLD_HEIGHT))
-        self.zoom_factor = 1.0  # 追加: 拡大縮小の度合い
+        self.zoom_factor = 1.0
         self.rotation_enabled = False
         self.zoom_enabled = False
+        
+        self.clock = pygame.time.Clock()
 
-    # ----------------- initialize agent ----------------------
     def create_creature(self, agent_id: int, agent_species: int, x: float, y: float) -> Creature:
         creature = Creature(agent_species, pygame.Vector2(x, y))
         self.creatures[agent_id] = creature
         return creature
 
-    # ----------------- update agent position ---------------------- 
     def update_creature(self, agent_id: int, x: float, y: float):
         if agent_id in self.creatures:
             self.creatures[agent_id].update(pygame.Vector2(x, y))
 
-    # ------------------- draw & render --------------------
     def draw(self):
         self.world_surface.fill(BACKGROUND_COLOR)
 
@@ -54,7 +53,6 @@ class VisualSystem:
                                 (int(surface_to_draw.get_width() * self.zoom_factor),
                                 int(surface_to_draw.get_height() * self.zoom_factor)))
             
-   
         rect = surface_to_draw.get_rect(center=(WORLD_WIDTH//2, WORLD_HEIGHT//2))
         self.screen.fill(BACKGROUND_COLOR)
         self.screen.blit(surface_to_draw, rect)
@@ -85,21 +83,27 @@ class VisualSystem:
                 self.update_creature(agent_id, pos[0], pos[1])
             time.sleep(0.001)
             self.draw()
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.running.value = False
+                return False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
+                    self.zoom_factor *= 1.1  # 拡大
+                elif event.key == pygame.K_MINUS:
+                    self.zoom_factor /= 1.1  # 縮小
+        return True
+    
+    def update(self):
+        self.timer.start()
+        if not self.handle_events():
+            return False
+        self.render()
+        self.timer.print_fps(5)        
+        self.clock.tick(RENDER_FPS)
+        return True
 
-    def run(self):
-        clock = pygame.time.Clock()
-        while self.running.value:
-            self.timer.start()
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running.value = False
-                    return
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
-                        self.zoom_factor *= 1.1  # 拡大
-                    elif event.key == pygame.K_MINUS:
-                        self.zoom_factor /= 1.1  # 縮小
-            self.render()
-            self.timer.print_fps(5)        
-            clock.tick(RENDER_FPS)
+    def cleanup(self):
         pygame.quit()
+        
