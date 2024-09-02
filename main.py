@@ -1,21 +1,17 @@
-import time
+import logging, sys, psutil, time
 import numpy as np
+import tensorflow as tf
 import multiprocessing as mp
 import threading
-from config import *
 from tensorflow_simulation import TensorFlowSimulation
 from box2d_simulation import Box2DSimulation
 from visual_system import VisualSystem
-from timer import Timer
 from ecosystem import Ecosystem
-import multiprocessing as mp
-import tkinter as tk 
-from parameter_control_ui import ParameterControlUI  
-import tensorflow as tf
-import logging
-import sys
-import psutil
-import time
+from parameter_control import *
+from timer import Timer
+from config import *
+import sparse_agent_array as saa
+
 
 def setup_logging():
     logging.basicConfig(level=logging.INFO, 
@@ -32,64 +28,6 @@ def monitor_resources():
         logger.info(f"CPU usage: {cpu_percent}%, Memory usage: {memory_percent}%")
         time.sleep(5)
 
-#--------- shared memory manager ------------
-
-def get_tf_positions(shared_memory):
-    # with shared_memory['lock']:
-    np_array = np.frombuffer(shared_memory['positions'].get_obj(), dtype=np.float32)
-    positions = np_array.reshape((-1, 2))
-    return tf.convert_to_tensor(positions, dtype=tf.float32)
-
-def get_tf_species(shared_memory):
-    # with shared_memory['lock']:
-    species = np.frombuffer(shared_memory['agent_species'].get_obj(), dtype=np.int32)
-    return tf.convert_to_tensor(species, dtype=tf.int32)
-
-def set_forces(shared_memory, forces):
-    # with shared_memory['lock']:
-    np_array = np.frombuffer(shared_memory['forces'].get_obj(), dtype=np.float32)
-    np_array[:] = forces.flatten()
-        
-#--------------------------------------- Controller ---------------------------------------
-
-def run_parameter_control_ui(shared_memory, queues, running):
-    root = tk.Tk()
-    ui_to_tensorflow_queue = queues['ui_to_tensorflow']
-
-    def update_callback(param_name, value):
-        shared_memory[param_name].value = value
-        ui_to_tensorflow_queue.put((param_name, value))
-
-    ui = ParameterControlUI(root, update_callback)
-
-    # 初期値の設定
-    initial_values = {
-        'separation_distance': shared_memory['separation_distance'].value,
-        'separation_weight': shared_memory['separation_weight'].value,
-        'cohesion_distance': shared_memory['cohesion_distance'].value,
-        'cohesion_weight': shared_memory['cohesion_weight'].value,
-        'max_force': shared_memory['max_force'].value,
-        'center_attraction_weight': shared_memory['center_attraction_weight'].value,
-        'confinement_weight': shared_memory['confinement_weight'].value,
-        'rotation_strength': shared_memory['rotation_strength'].value
-    }
-    ui.set_initial_values(initial_values)
-    
-
-    def on_closing():
-        running.value = False
-        root.quit()
-
-    root.protocol("WM_DELETE_WINDOW", on_closing)
-
-    def check_running():
-        if running.value:
-            root.after(100, check_running)
-        else:
-            root.quit()
-
-    root.after(100, check_running)
-    root.mainloop()
 
 #------------------------------------- Main routine -----------------------------------------
 
@@ -106,10 +44,10 @@ def tf_run(queues, shared_memory, running, initialization_complete):
     
     while running.value:
         timer.start()
-        tf_positions = get_tf_positions(shared_memory)
-        tf_species = get_tf_species(shared_memory)
+        tf_positions = saa.get_tf_positions(shared_memory)
+        tf_species = saa.get_tf_species(shared_memory)
         calculated_forces = tensorflow.calculate_forces(tf_positions, tf_species)
-        set_forces(shared_memory, calculated_forces.numpy())
+        saa.set_forces(shared_memory, calculated_forces.numpy())
 
         tensorflow.update_parameters()
 
