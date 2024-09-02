@@ -50,7 +50,7 @@ def set_forces(shared_memory, forces):
     np_array = np.frombuffer(shared_memory['forces'].get_obj(), dtype=np.float32)
     np_array[:] = forces.flatten()
         
-#---------------------------------------
+#--------------------------------------- Controller ---------------------------------------
 
 def run_parameter_control_ui(shared_memory, queues, running):
     root = tk.Tk()
@@ -75,7 +75,7 @@ def run_parameter_control_ui(shared_memory, queues, running):
     }
     ui.set_initial_values(initial_values)
     
-    
+
     def on_closing():
         running.value = False
         root.quit()
@@ -90,7 +90,9 @@ def run_parameter_control_ui(shared_memory, queues, running):
 
     root.after(100, check_running)
     root.mainloop()
-    
+
+#------------------------------------- Main routine -----------------------------------------
+
 def eco_run(queues, shared_memory, running, initialization_complete):
     ecosystem = Ecosystem(queues)
     ecosystem.initialize_agents(shared_memory)
@@ -108,7 +110,7 @@ def tf_run(queues, shared_memory, running, initialization_complete):
         tf_species = get_tf_species(shared_memory)
         calculated_forces = tensorflow.calculate_forces(tf_positions, tf_species)
         set_forces(shared_memory, calculated_forces.numpy())
-        
+
         tensorflow.update_parameters()
 
         shared_memory['tf_time'].value = timer.calculate_time()
