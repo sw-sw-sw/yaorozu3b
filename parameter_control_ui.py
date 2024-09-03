@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 import json
 import os
+import glob
 from config_manager import ConfigManager
 
 def run_parameter_control_ui(shared_memory, queues, running):
@@ -57,10 +58,20 @@ class ParameterControlUI:
             'escape_distance', 'escape_weight',
             'chase_distance', 'chase_weight'
         ]
+        self.params_folder = 'params'
+        self.ensure_params_folder()
+        self.saved_files = []
+        self.load_saved_files_list()
         self.create_sliders()
+        self.create_save_load_widgets()
         self.root.bind('<s>', self.save_settings)
+
         self.status_label = ttk.Label(self.root, text="")
-        self.status_label.grid(row=len(self.parameters), column=0, columnspan=3, pady=10)
+        self.status_label.grid(row=len(self.parameters)+1, column=0, columnspan=3, pady=10)
+
+    def ensure_params_folder(self):
+        if not os.path.exists(self.params_folder):
+            os.makedirs(self.params_folder)
 
     def create_sliders(self):
         for i, param_name in enumerate(self.parameters):
@@ -78,6 +89,12 @@ class ParameterControlUI:
             value_label.grid(row=i, column=2, padx=10, pady=5)
             self.value_labels[param_name] = value_label
 
+    def create_save_load_widgets(self):
+        ttk.Label(self.root, text="Saved Settings:").grid(row=len(self.parameters), column=0, padx=10, pady=5, sticky='e')
+        self.saved_settings_combobox = ttk.Combobox(self.root, values=self.saved_files)
+        self.saved_settings_combobox.grid(row=len(self.parameters), column=1, padx=10, pady=5)
+        ttk.Button(self.root, text="Load", command=self.load_selected_settings).grid(row=len(self.parameters), column=2, padx=10, pady=5)
+
     def update_parameter(self, param_name, value):
         self.update_callback(param_name, value)
         self.update_value_label(param_name, value)
@@ -90,22 +107,31 @@ class ParameterControlUI:
             if param_name in self.sliders:
                 self.sliders[param_name].set(value)
                 self.update_value_label(param_name, value)
-                
+
     def save_settings(self, event=None):
         settings = {param: slider.get() for param, slider in self.sliders.items()}
-        filename = 'simulation_settings.json'
-        with open(filename, 'w') as f:
+        next_number = len(self.saved_files) + 1
+        filename = f'simulation_settings_{next_number:03d}.json'
+        filepath = os.path.join(self.params_folder, filename)
+        with open(filepath, 'w') as f:
             json.dump(settings, f, indent=4)
         self.status_label.config(text=f"Settings saved to {filename}")
         self.root.after(3000, lambda: self.status_label.config(text=""))
+        self.load_saved_files_list()
 
-    def load_settings(self):
-        filename = 'simulation_settings.json'
-        if os.path.exists(filename):
-            with open(filename, 'r') as f:
+    def load_saved_files_list(self):
+        self.saved_files = sorted(glob.glob(os.path.join(self.params_folder, 'simulation_settings_*.json')))
+        if hasattr(self, 'saved_settings_combobox'):
+            self.saved_settings_combobox['values'] = [os.path.basename(f) for f in self.saved_files]
+
+    def load_selected_settings(self):
+        selected_file = self.saved_settings_combobox.get()
+        if selected_file:
+            filepath = os.path.join(self.params_folder, selected_file)
+            with open(filepath, 'r') as f:
                 settings = json.load(f)
             self.set_initial_values(settings)
             for param, value in settings.items():
                 self.update_callback(param, value)
-            self.status_label.config(text=f"Settings loaded from {filename}")
+            self.status_label.config(text=f"Settings loaded from {selected_file}")
             self.root.after(3000, lambda: self.status_label.config(text=""))
