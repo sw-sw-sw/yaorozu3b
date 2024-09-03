@@ -31,7 +31,9 @@ class TensorFlowSimulation:
 
         # 種別情報の初期化
         self.species = tf.Variable(tf.zeros([MAX_AGENTS_NUM], dtype=tf.int32))
-
+        self.predator_species = tf.constant([self.dna_manager.get_trait_value('PREDATOR_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
+        self.prey_species = tf.constant([self.dna_manager.get_trait_value('PREY_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
+    
     @tf.function
     def calculate_forces(self, positions, species):
         species_forces = self._species_forces(positions, species)
@@ -62,25 +64,44 @@ class TensorFlowSimulation:
     
     @tf.function
     def _predator_prey_forces(self, positions, distances, species):
-        predator_mask = tf.equal(species[:, tf.newaxis], 
-                                 tf.constant(self.dna_manager.get_trait_value('PREDATOR_SPECIES')))
-        prey_mask = tf.equal(species[:, tf.newaxis], 
-                             tf.constant(self.dna_manager.get_trait_value('PREY_SPECIES')))
+        num_agents = tf.shape(positions)[0]
+        num_species = 8  # 1から8までの種
 
-        escape_mask = tf.cast(tf.logical_and(distances < self.escape_distance, predator_mask), tf.float32)
-        escape_force = tf.reduce_sum(
-            (positions[:, tf.newaxis, :] - positions) * escape_mask[:, :, tf.newaxis], 
-            axis=1
-        ) * self.escape_weight
+        # 各種の捕食者と獲物のマスクを一度に作成
+        species_mask = tf.equal(tf.expand_dims(species, 0), tf.range(1, num_species + 1, dtype=tf.int32)[:, tf.newaxis])
+        predator_mask = tf.equal(tf.expand_dims(species, 1), tf.gather(self.predator_species, species - 1))
+        prey_mask = tf.equal(tf.expand_dims(species, 1), tf.gather(self.prey_species, species - 1))
 
-        chase_mask = tf.cast(tf.logical_and(distances < self.chase_distance, prey_mask), tf.float32)
-        chase_force = tf.reduce_sum(
-            (positions - positions[:, tf.newaxis, :]) * chase_mask[:, :, tf.newaxis], 
-            axis=1
-        ) * self.chase_weight
+        # 逃避と追跡のマスクを作成
+        escape_mask = tf.logical_and(predator_mask, distances < self.escape_distance)
+        chase_mask = tf.logical_and(prey_mask, distances < self.chase_distance)
 
-        return escape_force + chase_force
+        # 最も近い捕食者と獲物を見つける
+        escape_distances = tf.where(escape_mask, distances, tf.fill(tf.shape(distances), tf.float32.max))
+        chase_distances = tf.where(chase_mask, distances, tf.fill(tf.shape(distances), tf.float32.max))
+        nearest_predator = tf.argmin(escape_distances, axis=1)
+        nearest_prey = tf.argmin(chase_distances, axis=1)
 
+        # 逃避力と追跡力を計算
+        escape_direction = positions - tf.gather(positions, nearest_predator)
+        chase_direction = tf.gather(positions, nearest_prey) - positions
+
+        escape_force = tf.where(
+            tf.reduce_any(escape_mask, axis=1, keepdims=True),
+            tf.nn.l2_normalize(escape_direction, axis=1) * self.escape_weight,
+            tf.zeros_like(positions)
+        )
+
+        chase_force = tf.where(
+            tf.reduce_any(chase_mask, axis=1, keepdims=True),
+            tf.nn.l2_normalize(chase_direction, axis=1) * self.chase_weight,
+            tf.zeros_like(positions)
+        )
+
+        # 種ごとの力を合計
+        total_force = escape_force + chase_force
+
+        return total_force
 
     @tf.function
     def _separation(self, positions, distances):
