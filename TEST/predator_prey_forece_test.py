@@ -7,7 +7,7 @@ from tensorflow_simulation import TensorFlowSimulation
 pygame.init()
 
 # Constants
-WIDTH, HEIGHT = 2000, 2000
+WIDTH, HEIGHT = 1000, 1000
 AGENT_RADIUS = 5
 SPECIES_COLORS = [
     (255, 0, 0), (0, 255, 0), (0, 0, 255),
@@ -26,7 +26,7 @@ tf_sim = TensorFlowSimulation(None)  # Pass None as we're not using queues
 
 # Initialize agents
 num_species = 8
-agents_per_species = 30
+agents_per_species = 300
 total_agents = num_species * agents_per_species
 
 positions = np.random.rand(total_agents, 2) * np.array([WIDTH, HEIGHT])
@@ -45,16 +45,7 @@ def draw_force_vector(surface, start_pos, force, color):
     scaled_force = limit_vector_length(force * FORCE_SCALE, MAX_VECTOR_LENGTH)
     end_pos = start_pos + scaled_force * 20
     pygame.draw.line(surface, color, start_pos.astype(int), end_pos.astype(int), 1)
-    # Draw arrowhead
-    # if np.any(scaled_force):  # Only draw arrowhead if force is not zero
-    #     angle = np.arctan2(scaled_force[1], scaled_force[0])
-    #     arrow_head1 = end_pos - np.array([np.cos(angle + np.pi/6), np.sin(angle + np.pi/6)]) * 3
-    #     arrow_head2 = end_pos - np.array([np.cos(angle - np.pi/6), np.sin(angle - np.pi/6)]) * 3
-    #     pygame.draw.polygon(surface, color, [
-    #         end_pos.astype(int),
-    #         arrow_head1.astype(int),
-    #         arrow_head2.astype(int)
-        # ])
+
 
 # Main game loop
 running = True
@@ -71,6 +62,8 @@ while running:
 
     # Calculate forces using only predator_prey_forces
     forces = tf_sim._predator_prey_forces(tf_positions, tf.norm(tf_positions[:, tf.newaxis, :] - tf_positions, axis=2), tf_species)
+    # forces = tf_sim._predator_prey_forces2(tf_positions, tf_species)
+
     forces_np = forces.numpy()
 
     # Update velocities and positions

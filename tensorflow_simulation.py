@@ -24,7 +24,6 @@ class TensorFlowSimulation:
         self.rotation_strength = tf.Variable(self.config_manager.get_trait_value('ROTATION_STRENGTH'), dtype=tf.float32)
         self.confinement_weight = tf.Variable(self.config_manager.get_trait_value('CONFINEMENT_WEIGHT'), dtype=tf.float32)
 
-        # これらの値は変更される可能性が低いため、tf.constantとして保持
         self.escape_distance = tf.Variable(self.config_manager.get_trait_value('ESCAPE_DISTANCE'), dtype=tf.float32)
         self.escape_weight = tf.Variable(self.config_manager.get_trait_value('ESCAPE_WEIGHT'), dtype=tf.float32)
         self.chase_distance = tf.Variable(self.config_manager.get_trait_value('CHASE_DISTANCE'), dtype=tf.float32)
@@ -43,14 +42,21 @@ class TensorFlowSimulation:
 
     @tf.function
     def _environment_forces(self, positions):
-        center_attraction = self._center_attraction(positions)
-        circular_confinement = self._circular_confinement(positions)
+        
+        # center_attraction
         to_center, distances = self._calculate_center_distances(positions)
-        rotation = self._rotation(to_center, distances)
-        forces = (self.center_attraction_weight * center_attraction +
-                  self.confinement_weight * circular_confinement +
-                  self.rotation_strength * rotation)
-        return forces
+        center_attraction = self.center_attraction_weight * tf.nn.l2_normalize(to_center, axis=1)
+        
+        # circular_confinement
+        outside_circle = tf.cast(distances > self.world_radius, tf.float32)
+        circular_confinement = self.confinement_weight * outside_circle * (distances - self.world_radius) * to_center / distances
+        
+        # rotation_force
+        inverse_distance = 1.0 / (distances + 1e-5)
+        rotation_force = tf.stack([to_center[:, 1], -to_center[:, 0]], axis=1)
+        rotation = self.rotation_strength * tf.nn.l2_normalize(rotation_force * inverse_distance, axis=1)
+        
+        return center_attraction + circular_confinement + rotation
     
     @tf.function
     def _species_forces(self, positions, species):
@@ -103,7 +109,7 @@ class TensorFlowSimulation:
         total_force = escape_force + chase_force
 
         return total_force
-
+    
     @tf.function
     def _separation(self, positions, distances):
         mask = tf.cast(tf.logical_and(distances < self.separation_distance, distances > 0), tf.float32)
@@ -119,25 +125,6 @@ class TensorFlowSimulation:
         count = tf.reduce_sum(mask, axis=1, keepdims=True)
         center_of_mass = tf.where(count > 0, center_of_mass / count, positions)
         return center_of_mass - positions
-
-    @tf.function
-    def _center_attraction(self, positions):
-        to_center = self.world_center - positions
-        return tf.nn.l2_normalize(to_center, axis=1)
-
-    @tf.function
-    def _circular_confinement(self, positions):
-        to_center, distances = self._calculate_center_distances(positions)
-        outside_circle = tf.cast(distances > self.world_radius, tf.float32)
-        confinement_force = outside_circle * (distances - self.world_radius) * to_center / distances
-        return confinement_force
-
-    @tf.function
-    def _rotation(self, to_center, distances):
-        inverse_distance = 1.0 / (distances + 1e-5)
-        rotation_force = tf.stack([to_center[:, 1], -to_center[:, 0]], axis=1)
-        scaled_rotation_force = rotation_force * inverse_distance
-        return tf.nn.l2_normalize(scaled_rotation_force, axis=1)
 
     @tf.function
     def _calculate_center_distances(self, positions):
