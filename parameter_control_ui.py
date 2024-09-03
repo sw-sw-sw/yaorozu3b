@@ -64,10 +64,10 @@ class ParameterControlUI:
         self.load_saved_files_list()
         self.create_sliders()
         self.create_save_load_widgets()
-        self.root.bind('<s>', self.save_settings)
+        self.root.bind('<s>', self.focus_save_button)  # sキーの動作を変更
 
         self.status_label = ttk.Label(self.root, text="")
-        self.status_label.grid(row=len(self.parameters)+1, column=0, columnspan=3, pady=10)
+        self.status_label.grid(row=len(self.parameters)+2, column=0, columnspan=3, pady=10)
 
     def ensure_params_folder(self):
         if not os.path.exists(self.params_folder):
@@ -94,7 +94,10 @@ class ParameterControlUI:
         self.saved_settings_combobox = ttk.Combobox(self.root, values=self.saved_files)
         self.saved_settings_combobox.grid(row=len(self.parameters), column=1, padx=10, pady=5)
         ttk.Button(self.root, text="Load", command=self.load_selected_settings).grid(row=len(self.parameters), column=2, padx=10, pady=5)
-
+        # Saveボタンを追加
+        self.save_button = ttk.Button(self.root, text="Save", command=self.save_settings)
+        self.save_button.grid(row=len(self.parameters)+1, column=1, padx=10, pady=5)
+                              
     def update_parameter(self, param_name, value):
         self.update_callback(param_name, value)
         self.update_value_label(param_name, value)
@@ -108,7 +111,7 @@ class ParameterControlUI:
                 self.sliders[param_name].set(value)
                 self.update_value_label(param_name, value)
 
-    def save_settings(self, event=None):
+    def save_settings(self):
         settings = {param: slider.get() for param, slider in self.sliders.items()}
         next_number = len(self.saved_files) + 1
         filename = f'simulation_settings_{next_number:03d}.json'
@@ -135,3 +138,7 @@ class ParameterControlUI:
                 self.update_callback(param, value)
             self.status_label.config(text=f"Settings loaded from {selected_file}")
             self.root.after(3000, lambda: self.status_label.config(text=""))
+
+    def focus_save_button(self, event):
+        self.save_button.focus_set()
+        self.save_button.invoke()

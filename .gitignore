@@ -7,3 +7,4 @@ setting/
 temp.py 
 old/
 simulation_settings.json
+params/*
