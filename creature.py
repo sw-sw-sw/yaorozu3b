@@ -3,13 +3,13 @@ import random
 import noise
 import pygame
 from pygame import Vector2
-from dna_manager import DNAManager, DNASpecies
+from config_manager import ConfigManager, DNASpecies
 
 class Creature(pygame.sprite.Sprite):
     def __init__(self, agent_species: int, position: Vector2):
         super().__init__()
-        self.dna_manager = DNAManager()
-        self.dna = DNASpecies(self.dna_manager, agent_species)
+        self.config_manager = ConfigManager()
+        self.dna: DNASpecies = self.config_manager.get_dna_for_species(agent_species)
         self._pos = position
         self._initialize_traits()
         self._initialize_horns()
@@ -19,15 +19,15 @@ class Creature(pygame.sprite.Sprite):
         self._original_image = self.image
 
     def _initialize_traits(self):
-        self._size = self.dna.get_trait_value("SIZE") 
-        self._horn_num = int(self.dna.get_trait_value("HORN_NUM"))
-        self._horn_length = self.dna.get_trait_value("HORN_LENGTH")
-        self._horn_width = self.dna.get_trait_value("HORN_WIDTH")
-        self._shell_size = self.dna.get_trait_value("SHELL_SIZE")
-        self._shell_point_size = self.dna.get_trait_value("SHELL_POINT_SIZE")
+        self._size = self.dna.get_trait("SIZE")
+        self._horn_num = int(self.dna.get_trait("HORN_NUM"))
+        self._horn_length = self.dna.get_trait("HORN_LENGTH")
+        self._horn_width = self.dna.get_trait("HORN_WIDTH")
+        self._shell_size = self.dna.get_trait("SHELL_SIZE")
+        self._shell_point_size = self.dna.get_trait("SHELL_POINT_SIZE")
         self._color = self._get_color_from_dna()
         self._rotate = 0
-        self._rotate_v = self.dna.get_trait_value("SPEED") * (random.random() - 0.5)
+        self._rotate_v = self.dna.get_trait("SPEED") * (random.random() - 0.5)
         
         self._flash = False
         self._move_count = 0
@@ -100,5 +100,5 @@ class Creature(pygame.sprite.Sprite):
         return max(self._size / 2, self._size * self._shell_size / 2 + self._shell_point_size + 2, self._size * self._horn_length / 2) + 1
     
     def _get_color_from_dna(self):
-        color_value = int(self.dna.get_trait_value("COLOR"))
+        color_value = int(self.dna.get_trait("COLOR"))
         return pygame.Color(color_value, color_value, color_value)

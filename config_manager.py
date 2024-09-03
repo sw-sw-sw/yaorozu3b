@@ -1,5 +1,5 @@
-import csv
-from typing import Dict, Any, Tuple
+import csv, ast
+from typing import Dict, Any, Tuple, Union
 
 class DNASpecies:
     def __init__(self, species_id: int, traits: Dict[str, Any]):
@@ -99,3 +99,19 @@ class ConfigManager:
             print(f"\nSpecies {species}:")
             for trait, value in dna.traits.items():
                 print(f"  {trait}: {value}")
+    
+
+    def get_trait_value_as_tuple(self, trait: str) -> Union[Tuple, Any]:
+        """
+        指定されたトレイトの値をタプルとして取得します。
+        値が文字列形式のタプルの場合、Pythonのタプルに変換して返します。
+        そうでない場合は、元の値をそのまま返します。
+        """
+        value = self.get_trait_value(trait)
+        if isinstance(value, str) and value.startswith('(') and value.endswith(')'):
+            try:
+                return ast.literal_eval(value)
+            except (ValueError, SyntaxError):
+                print('Cannot be analyzed as a tuple')
+                return value
+        return value

@@ -1,38 +1,39 @@
 import tensorflow as tf
-from config import *
-from dna_manager import DNAManager
+from config_manager import ConfigManager
 
 class TensorFlowSimulation:
     def __init__(self, queues):
         self.queues = queues
         self.ui_to_tensorflow_queue = queues['ui_to_tensorflow']
+        self.config_manager = ConfigManager()
         
-        self.world_size = tf.constant([WORLD_WIDTH, WORLD_HEIGHT], dtype=tf.float32)
+        # ConfigManagerから値を取得してプロパティとして設定
+        self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
+        self.world_height = self.config_manager.get_trait_value('WORLD_HEIGHT')
+        self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
+
+        self.world_size = tf.constant([self.world_width, self.world_height], dtype=tf.float32)
         self.world_center = self.world_size / 2
         self.world_radius = tf.reduce_min(self.world_size) / 2 - 10
-        self.max_force = tf.Variable(MAX_FORCE, dtype=tf.float32)
+        self.max_force = tf.Variable(self.config_manager.get_trait_value('MAX_FORCE'), dtype=tf.float32)
+        self.separation_distance = tf.Variable(self.config_manager.get_trait_value('SEPARATION_DISTANCE'), dtype=tf.float32)
+        self.cohesion_distance = tf.Variable(self.config_manager.get_trait_value('COHESION_DISTANCE'), dtype=tf.float32)
+        self.separation_weight = tf.Variable(self.config_manager.get_trait_value('SEPARATION_WEIGHT'), dtype=tf.float32)
+        self.cohesion_weight = tf.Variable(self.config_manager.get_trait_value('COHESION_WEIGHT'), dtype=tf.float32)
+        self.center_attraction_weight = tf.Variable(self.config_manager.get_trait_value('CENTER_ATTRACTION_WEIGHT'), dtype=tf.float32)
+        self.rotation_strength = tf.Variable(self.config_manager.get_trait_value('ROTATION_STRENGTH'), dtype=tf.float32)
+        self.confinement_weight = tf.Variable(self.config_manager.get_trait_value('CONFINEMENT_WEIGHT'), dtype=tf.float32)
 
-        # Flocking parameters
-        self.separation_distance = tf.Variable(SEPARATION_DISTANCE, dtype=tf.float32)
-        self.cohesion_distance = tf.Variable(COHESION_DISTANCE, dtype=tf.float32)
-        self.separation_weight = tf.Variable(SEPARATION_WEIGHT, dtype=tf.float32)
-        self.cohesion_weight = tf.Variable(COHESION_WEIGHT, dtype=tf.float32)
-
-        # Environmental forces parameters
-        self.center_attraction_weight = tf.Variable(CENTER_ATTRACTION_WEIGHT, dtype=tf.float32)
-        self.rotation_strength = tf.Variable(ROTATION_STRENGTH, dtype=tf.float32)
-        self.confinement_weight = tf.Variable(CONFINEMENT_WEIGHT, dtype=tf.float32)
-
-        self.dna_manager = DNAManager()
-        self.escape_distance = tf.constant(self.dna_manager.get_trait_value('ESCAPE_DISTANCE'), dtype=tf.float32)
-        self.escape_weight = tf.constant(self.dna_manager.get_trait_value('ESCAPE_WEIGHT'), dtype=tf.float32)
-        self.chase_distance = tf.constant(self.dna_manager.get_trait_value('CHASE_DISTANCE'), dtype=tf.float32)
-        self.chase_weight = tf.constant(self.dna_manager.get_trait_value('CHASE_WEIGHT'), dtype=tf.float32)
+        # これらの値は変更される可能性が低いため、tf.constantとして保持
+        self.escape_distance = tf.Variable(self.config_manager.get_trait_value('ESCAPE_DISTANCE'), dtype=tf.float32)
+        self.escape_weight = tf.Variable(self.config_manager.get_trait_value('ESCAPE_WEIGHT'), dtype=tf.float32)
+        self.chase_distance = tf.Variable(self.config_manager.get_trait_value('CHASE_DISTANCE'), dtype=tf.float32)
+        self.chase_weight = tf.Variable(self.config_manager.get_trait_value('CHASE_WEIGHT'), dtype=tf.float32)
 
         # 種別情報の初期化
-        self.species = tf.Variable(tf.zeros([MAX_AGENTS_NUM], dtype=tf.int32))
-        self.predator_species = tf.constant([self.dna_manager.get_trait_value('PREDATOR_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
-        self.prey_species = tf.constant([self.dna_manager.get_trait_value('PREY_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
+        self.species = tf.Variable(tf.zeros([self.max_agents_num], dtype=tf.int32))
+        self.predator_species = tf.constant([self.config_manager.get_species_trait_value('PREDATOR_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
+        self.prey_species = tf.constant([self.config_manager.get_species_trait_value('PREY_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
     
     @tf.function
     def calculate_forces(self, positions, species):

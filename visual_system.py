@@ -1,6 +1,6 @@
 import pygame
 import numpy as np
-from config import *
+from config_manager import ConfigManager
 from timer import Timer
 from creature import Creature
 from typing import Dict
@@ -9,9 +9,14 @@ import time
 class VisualSystem:
     def __init__(self, queues):
         pygame.init()
+        self.config_manager = ConfigManager()
+        self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
+        self.world_height = self.config_manager.get_trait_value('WORLD_HEIGHT')
+        self.background_color = self.config_manager.get_trait_value_as_tuple('BACKGROUND_COLOR')
+        self.render_fps = self.config_manager.get_trait_value('RENDER_FPS')
         self._rendering_queue = queues['rendering_queue']
         self._eco_to_visual_creatures = queues['eco_to_visual_creatures']
-        self.screen = pygame.display.set_mode((WORLD_WIDTH, WORLD_HEIGHT))
+        self.screen = pygame.display.set_mode((self.world_width, self.world_height))
         self.timer = Timer("Render ")
         self.creatures: Dict[int, Creature] = {}
         self.all_sprites = pygame.sprite.Group()
@@ -19,7 +24,7 @@ class VisualSystem:
         # Display settings
         self.rotation_angle = 0
         self.rotation_speed = 0.0
-        self.world_surface = pygame.Surface((WORLD_WIDTH, WORLD_HEIGHT))
+        self.world_surface = pygame.Surface((self.world_width, self.world_height))
         self.rotation_enabled = False
         
         self.clock = pygame.time.Clock()
@@ -36,7 +41,7 @@ class VisualSystem:
             self.creatures[agent_id].update(pygame.Vector2(x, y))
 
     def draw(self):
-        self.world_surface.fill(BACKGROUND_COLOR)
+        self.world_surface.fill(self.background_color)
         self.all_sprites.draw(self.world_surface)
 
         surface_to_draw = self.world_surface
@@ -44,8 +49,8 @@ class VisualSystem:
         if self.rotation_enabled:
             surface_to_draw = pygame.transform.rotate(surface_to_draw, self.rotation_angle)
             
-        rect = surface_to_draw.get_rect(center=(WORLD_WIDTH//2, WORLD_HEIGHT//2))
-        self.screen.fill(BACKGROUND_COLOR)
+        rect = surface_to_draw.get_rect(center=(self.world_width//2, self.world_height//2))
+        self.screen.fill(self.background_color)
         self.screen.blit(surface_to_draw, rect)
 
         pygame.display.flip()
@@ -78,7 +83,7 @@ class VisualSystem:
         self.timer.start()
         self.render()
         self.timer.print_fps(5)        
-        self.clock.tick(RENDER_FPS)
+        self.clock.tick(self.render_fps)
         return True
 
     def cleanup(self):

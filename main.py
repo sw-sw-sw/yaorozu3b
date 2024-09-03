@@ -7,9 +7,9 @@ from tensorflow_simulation import TensorFlowSimulation
 from box2d_simulation import Box2DSimulation
 from visual_system import VisualSystem
 from ecosystem import Ecosystem
+from config_manager import ConfigManager
 from parameter_control_ui import *
 from timer import Timer
-from config import *
 import sparse_agent_array as saa
 from log import *
 
@@ -74,26 +74,31 @@ def visual_system_run(queues, shared_memory, running, initialization_complete):
 def run_simulation():
     logger.info("Starting simulation")
     
+    config_manager = ConfigManager()
+    
     shared_memory = {
-        'positions': mp.Array('f', MAX_AGENTS_NUM * 2),
-        'velocities': mp.Array('f', MAX_AGENTS_NUM * 2),
-        'forces': mp.Array('f', MAX_AGENTS_NUM * 2),
-        'agent_ids': mp.Array('i', MAX_AGENTS_NUM),
-        'agent_species': mp.Array('i', MAX_AGENTS_NUM),
+        'positions': mp.Array('f', config_manager.get_trait_value('MAX_AGENTS_NUM') * 2),
+        'velocities': mp.Array('f', config_manager.get_trait_value('MAX_AGENTS_NUM') * 2),
+        'forces': mp.Array('f', config_manager.get_trait_value('MAX_AGENTS_NUM') * 2),
+        'agent_ids': mp.Array('i', config_manager.get_trait_value('MAX_AGENTS_NUM')),
+        'agent_species': mp.Array('i', config_manager.get_trait_value('MAX_AGENTS_NUM')),
         'current_agent_count': mp.Value('i', 0),
         'tf_time': mp.Value('d', 0.0),
         'box2d_time': mp.Value('d', 0.0),
         'lock': mp.Lock(),
-        # 新しいパラメータを追加
-        'separation_distance': mp.Value('f', SEPARATION_DISTANCE),
-        'separation_weight': mp.Value('f', SEPARATION_WEIGHT),
-        'cohesion_distance': mp.Value('f', COHESION_DISTANCE),
-        'cohesion_weight': mp.Value('f', COHESION_WEIGHT),
-        'max_force': mp.Value('f', MAX_FORCE),
-        'center_attraction_weight': mp.Value('f', CENTER_ATTRACTION_WEIGHT),
-        'confinement_weight': mp.Value('f', CONFINEMENT_WEIGHT),
-        'rotation_strength': mp.Value('f', ROTATION_STRENGTH)
     }
+
+    controllable_params = [
+        'SEPARATION_DISTANCE', 'SEPARATION_WEIGHT',
+        'COHESION_DISTANCE', 'COHESION_WEIGHT',
+        'MAX_FORCE', 'CENTER_ATTRACTION_WEIGHT',
+        'CONFINEMENT_WEIGHT', 'ROTATION_STRENGTH',
+        'ESCAPE_DISTANCE', 'ESCAPE_WEIGHT',
+        'CHASE_DISTANCE', 'CHASE_WEIGHT'
+    ]
+
+    for param in controllable_params:
+        shared_memory[param] = mp.Value('f', config_manager.get_trait_value(param))
 
     running = mp.Value('b', True)
     queues = {

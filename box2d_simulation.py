@@ -1,42 +1,44 @@
 from Box2D import b2World, b2Vec2, b2BodyDef, b2_dynamicBody, b2CircleShape
-from config import *
 import numpy as np
 import logging
 import random
 import time
-from dna_manager import DNAManager
+from config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 
 class Box2DSimulation:
     def __init__(self, queues):
-        self.dna_manager = DNAManager()
+        
         self.world = b2World(gravity=(0, 0), doSleep=True)
         self.bodies = []
         self._rendering_queue = queues['rendering_queue']
         self._eco_to_box2d_creatures = queues['eco_to_box2d_creatures']
-        self.positions = np.zeros((MAX_AGENTS_NUM, 2), dtype=np.float32)
-
-    #------------------ random move ---------------------
-            
-        self.last_random_velocity_time = time.time() # for radom velocity
-        self.random_velocity_interval = RANDOM_VELOCITY_INTERVAL
-        self.random_speed= RANDOM_SPEED
+        
+        # ConfigManagerから値を取得してプロパティとして設定
+        self.config_manager = ConfigManager()
+        self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
+        self.random_velocity_interval = self.config_manager.get_trait_value('RANDOM_VELOCITY_INTERVAL')
+        self.random_speed = self.config_manager.get_trait_value('RANDOM_SPEED')
+        self.dt = self.config_manager.get_trait_value('DT') 
+        self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
+        self.last_random_velocity_time = time.time()
+  
         
     #------------------- initialize --------------------    
     def create_bodies(self):
-        for _ in range(MAX_AGENTS_NUM):
+        for _ in range(self.max_agents_num):
             creature_info = self._eco_to_box2d_creatures.get()
             self._create_body(creature_info)
-        logger.info(f"Created {MAX_AGENTS_NUM} bodies in Box2D simulation")
+        logger.info(f"Created {self.max_agents_num} bodies in Box2D simulation")
 
     def _create_body(self, creature_info):
         species =creature_info['agent_species']
-        linear_damping = self.dna_manager[species].get_trait_value('DAMPING')    
-        density = self.dna_manager[species].get_trait_value('DENSITY') 
-        restitution = self.dna_manager[species].get_trait_value('RESTITUTION') 
-        friction = self.dna_manager[species].get_trait_value('FRICTION') 
-        mass = self.dna_manager[species].get_trait_value('MASS') 
+        linear_damping = self.config_manager.get_species_trait_value('DAMPING', species)
+        density = self.config_manager.get_species_trait_value('DENSITY', species)
+        restitution = self.config_manager.get_species_trait_value('RESTITUTION', species)
+        friction = self.config_manager.get_species_trait_value('FRICTION', species)
+        mass = self.config_manager.get_species_trait_value('MASS', species)
         
         body_def = b2BodyDef(
             type=b2_dynamicBody,
@@ -53,13 +55,13 @@ class Box2DSimulation:
         
     # ------------------ update ---------------------
     def apply_forces_to_box2d(self, _forces):
-        forces = np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((MAX_AGENTS_NUM, 2))
+        forces = np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((self.max_agents_num, 2))
         for body, force in zip(self.bodies, forces):
             body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
 
     def apply_positions_to_shared_memory(self, _positions):
         positions = self.get_positions()
-        np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((MAX_AGENTS_NUM, 2))[:] = positions
+        np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((self.max_agents_num, 2))[:] = positions
 
     def get_positions(self):
         return np.array([(body.position.x, body.position.y) for body in self.bodies], dtype=np.float32)
@@ -84,5 +86,5 @@ class Box2DSimulation:
     # -----------------to renderer ----------------------
     
     def step(self):
-        self.world.Step(DT, 6, 2)
-        self.apply_random_velocity() # random move
+        self.world.Step(self.dt, 6, 2)
+        # self.apply_random_velocity() # random move

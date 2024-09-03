@@ -2,30 +2,29 @@ import tkinter as tk
 from tkinter import ttk
 import json
 import os
+from config_manager import ConfigManager
 
 def run_parameter_control_ui(shared_memory, queues, running):
     root = tk.Tk()
     ui_to_tensorflow_queue = queues['ui_to_tensorflow']
 
     def update_callback(param_name, value):
-        shared_memory[param_name].value = value
+        if param_name in shared_memory:
+            shared_memory[param_name].value = value
         ui_to_tensorflow_queue.put((param_name, value))
 
-    ui = ParameterControlUI(root, update_callback)
+    config_manager = ConfigManager()
+    ui = ParameterControlUI(root, update_callback, config_manager)
 
     # 初期値の設定
-    initial_values = {
-        'separation_distance': shared_memory['separation_distance'].value,
-        'separation_weight': shared_memory['separation_weight'].value,
-        'cohesion_distance': shared_memory['cohesion_distance'].value,
-        'cohesion_weight': shared_memory['cohesion_weight'].value,
-        'max_force': shared_memory['max_force'].value,
-        'center_attraction_weight': shared_memory['center_attraction_weight'].value,
-        'confinement_weight': shared_memory['confinement_weight'].value,
-        'rotation_strength': shared_memory['rotation_strength'].value
-    }
+    initial_values = {}
+    for param_name in ui.parameters:
+        if param_name.upper() in shared_memory:
+            initial_values[param_name] = shared_memory[param_name.upper()].value
+        else:
+            initial_values[param_name] = config_manager.get_trait_value(param_name.upper())
+
     ui.set_initial_values(initial_values)
-    
 
     def on_closing():
         running.value = False
@@ -41,39 +40,40 @@ def run_parameter_control_ui(shared_memory, queues, running):
 
     root.after(100, check_running)
     root.mainloop()
-    
+
 class ParameterControlUI:
-    def __init__(self, root, update_callback):
+    def __init__(self, root, update_callback, config_manager):
         self.root = root
         self.root.title("Simulation Parameter Control")
         self.update_callback = update_callback
+        self.config_manager = config_manager
         self.sliders = {}
-        self.value_labels = {}  # 新しく追加：値を表示するラベルの辞書
+        self.value_labels = {}
+        self.parameters = [
+            'separation_distance', 'separation_weight',
+            'cohesion_distance', 'cohesion_weight',
+            'max_force', 'center_attraction_weight',
+            'confinement_weight', 'rotation_strength',
+            'escape_distance', 'escape_weight',
+            'chase_distance', 'chase_weight'
+        ]
         self.create_sliders()
-        self.root.bind('<s>', self.save_settings)  # Add key binding for 's'
+        self.root.bind('<s>', self.save_settings)
+        self.status_label = ttk.Label(self.root, text="")
+        self.status_label.grid(row=len(self.parameters), column=0, columnspan=3, pady=10)
 
     def create_sliders(self):
-        parameters = [
-            ("Separation Distance", 'separation_distance', 0, 100),
-            ("Separation Weight", 'separation_weight', 0, 50),
-            ("Cohesion Distance", 'cohesion_distance', 0, 500),
-            ("Cohesion Weight", 'cohesion_weight', 0, 50),
-            ("Max Force", 'max_force', 0, 500),
-            ("Center Attraction Weight", 'center_attraction_weight', 0, 200),
-            ("Confinement Weight", 'confinement_weight', 0, 200),
-            ("Rotation Strength", 'rotation_strength', 0, 600),
-        ]
-
-        for i, (label, param_name, min_val, max_val) in enumerate(parameters):
+        for i, param_name in enumerate(self.parameters):
+            label = " ".join(word.capitalize() for word in param_name.split('_'))
             ttk.Label(self.root, text=label).grid(row=i, column=0, padx=10, pady=5, sticky='e')
             
+            min_val, max_val = self.config_manager.get_trait_range(param_name.upper())
             slider = ttk.Scale(self.root, from_=min_val, to=max_val, orient=tk.HORIZONTAL, length=200)
             slider.grid(row=i, column=1, padx=10, pady=5)
             slider.bind("<ButtonRelease-1>", lambda event, param=param_name: self.update_parameter(param, event.widget.get()))
             slider.bind("<B1-Motion>", lambda event, param=param_name: self.update_value_label(param, event.widget.get()))
             self.sliders[param_name] = slider
 
-            # 値を表示するラベルを追加
             value_label = ttk.Label(self.root, text="0.00")
             value_label.grid(row=i, column=2, padx=10, pady=5)
             self.value_labels[param_name] = value_label
@@ -97,7 +97,7 @@ class ParameterControlUI:
         with open(filename, 'w') as f:
             json.dump(settings, f, indent=4)
         self.status_label.config(text=f"Settings saved to {filename}")
-        self.root.after(3000, lambda: self.status_label.config(text=""))  # Clear message after 3 seconds
+        self.root.after(3000, lambda: self.status_label.config(text=""))
 
     def load_settings(self):
         filename = 'simulation_settings.json'
@@ -108,4 +108,4 @@ class ParameterControlUI:
             for param, value in settings.items():
                 self.update_callback(param, value)
             self.status_label.config(text=f"Settings loaded from {filename}")
-            self.root.after(3000, lambda: self.status_label.config(text=""))  # Clear message after 3 seconds
+            self.root.after(3000, lambda: self.status_label.config(text=""))
