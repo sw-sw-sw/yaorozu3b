@@ -2,6 +2,7 @@ import tensorflow as tf
 from config_manager import ConfigManager
 import time
 
+
 class TensorFlowSimulation:
     def __init__(self, queues):
         self.queues = queues
@@ -126,96 +127,43 @@ class TensorFlowSimulation:
     @tf.function
     def _predator_prey_forces(self, positions, distances, species):
         num_agents = tf.shape(positions)[0]
-        forces = tf.zeros_like(positions)
+        num_species = 8  # 1から8までの種
 
-        # 種ごとの捕食者と獲物のインデックスを事前計算
-        predator_indices = tf.gather(self.predator_species, species - 1)
-        prey_indices = tf.gather(self.prey_species, species - 1)
+        # 各種の捕食者と獲物のマスクを一度に作成
+        species_mask = tf.equal(tf.expand_dims(species, 0), tf.range(1, num_species + 1, dtype=tf.int32)[:, tf.newaxis])
+        predator_mask = tf.equal(tf.expand_dims(species, 1), tf.gather(self.predator_species, species - 1))
+        prey_mask = tf.equal(tf.expand_dims(species, 1), tf.gather(self.prey_species, species - 1))
 
-        # 各エージェントの種、捕食者、獲物の種を一度に取得
-        species_mask = tf.equal(tf.expand_dims(species, 0), tf.range(1, 9, dtype=tf.int32)[:, tf.newaxis])
-        predator_mask = tf.equal(tf.expand_dims(species, 1), predator_indices)
-        prey_mask = tf.equal(tf.expand_dims(species, 1), prey_indices)
-
-        # 逃避と追跡の距離マスクを作成
+        # 逃避と追跡のマスクを作成
         escape_mask = tf.logical_and(predator_mask, distances < self.escape_distance)
         chase_mask = tf.logical_and(prey_mask, distances < self.chase_distance)
 
-        # 位置の差分を一度に計算
-        pos_diff = tf.expand_dims(positions, 1) - positions
+        # 最も近い捕食者と獲物を見つける
+        escape_distances = tf.where(escape_mask, distances, tf.fill(tf.shape(distances), tf.float32.max))
+        chase_distances = tf.where(chase_mask, distances, tf.fill(tf.shape(distances), tf.float32.max))
+        nearest_predator = tf.argmin(escape_distances, axis=1)
+        nearest_prey = tf.argmin(chase_distances, axis=1)
 
-        # 逃避力の計算
-        escape_directions = tf.where(
-            tf.expand_dims(escape_mask, -1),
-            pos_diff,
-            tf.zeros_like(pos_diff)
-        )
-        escape_force = tf.reduce_sum(escape_directions, axis=1)
+        # 逃避力と追跡力を計算
+        escape_direction = positions - tf.gather(positions, nearest_predator)
+        chase_direction = tf.gather(positions, nearest_prey) - positions
+
         escape_force = tf.where(
             tf.reduce_any(escape_mask, axis=1, keepdims=True),
-            tf.nn.l2_normalize(escape_force, axis=1) * self.escape_weight,
-            tf.zeros_like(escape_force)
+            tf.nn.l2_normalize(escape_direction, axis=1) * self.escape_weight,
+            tf.zeros_like(positions)
         )
 
-        # 追跡力の計算
-        chase_directions = tf.where(
-            tf.expand_dims(chase_mask, -1),
-            -pos_diff,
-            tf.zeros_like(pos_diff)
-        )
-        chase_force = tf.reduce_sum(chase_directions, axis=1)
         chase_force = tf.where(
             tf.reduce_any(chase_mask, axis=1, keepdims=True),
-            tf.nn.l2_normalize(chase_force, axis=1) * self.chase_weight,
-            tf.zeros_like(chase_force)
+            tf.nn.l2_normalize(chase_direction, axis=1) * self.chase_weight,
+            tf.zeros_like(positions)
         )
 
-        # 合計力の計算
+        # 種ごとの力を合計
         total_force = escape_force + chase_force
 
         return total_force
-   
-    # @profile
-    # @tf.function
-    # def _predator_prey_forces(self, positions, distances, species):
-    #     num_agents = tf.shape(positions)[0]
-    #     num_species = 8  # 1から8までの種
-
-    #     # 各種の捕食者と獲物のマスクを一度に作成
-    #     species_mask = tf.equal(tf.expand_dims(species, 0), tf.range(1, num_species + 1, dtype=tf.int32)[:, tf.newaxis])
-    #     predator_mask = tf.equal(tf.expand_dims(species, 1), tf.gather(self.predator_species, species - 1))
-    #     prey_mask = tf.equal(tf.expand_dims(species, 1), tf.gather(self.prey_species, species - 1))
-
-    #     # 逃避と追跡のマスクを作成
-    #     escape_mask = tf.logical_and(predator_mask, distances < self.escape_distance)
-    #     chase_mask = tf.logical_and(prey_mask, distances < self.chase_distance)
-
-    #     # 最も近い捕食者と獲物を見つける
-    #     escape_distances = tf.where(escape_mask, distances, tf.fill(tf.shape(distances), tf.float32.max))
-    #     chase_distances = tf.where(chase_mask, distances, tf.fill(tf.shape(distances), tf.float32.max))
-    #     nearest_predator = tf.argmin(escape_distances, axis=1)
-    #     nearest_prey = tf.argmin(chase_distances, axis=1)
-
-    #     # 逃避力と追跡力を計算
-    #     escape_direction = positions - tf.gather(positions, nearest_predator)
-    #     chase_direction = tf.gather(positions, nearest_prey) - positions
-
-    #     escape_force = tf.where(
-    #         tf.reduce_any(escape_mask, axis=1, keepdims=True),
-    #         tf.nn.l2_normalize(escape_direction, axis=1) * self.escape_weight,
-    #         tf.zeros_like(positions)
-    #     )
-
-    #     chase_force = tf.where(
-    #         tf.reduce_any(chase_mask, axis=1, keepdims=True),
-    #         tf.nn.l2_normalize(chase_direction, axis=1) * self.chase_weight,
-    #         tf.zeros_like(positions)
-    #     )
-
-    #     # 種ごとの力を合計
-    #     total_force = escape_force + chase_force
-
-    #     return total_force
     
     @profile
     @tf.function
