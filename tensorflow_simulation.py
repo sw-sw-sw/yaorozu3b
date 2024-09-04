@@ -1,5 +1,6 @@
 import tensorflow as tf
 from config_manager import ConfigManager
+import time
 
 class TensorFlowSimulation:
     def __init__(self, queues):
@@ -14,7 +15,7 @@ class TensorFlowSimulation:
 
         self.world_size = tf.constant([self.world_width, self.world_height], dtype=tf.float32)
         self.world_center = self.world_size / 2
-        self.world_radius = tf.reduce_min(self.world_size) / 2 - 10
+        self.world_radius = tf.reduce_min(self.world_size) / 2 + 50
         self.max_force = tf.Variable(self.config_manager.get_trait_value('MAX_FORCE'), dtype=tf.float32)
         self.separation_distance = tf.Variable(self.config_manager.get_trait_value('SEPARATION_DISTANCE'), dtype=tf.float32)
         self.cohesion_distance = tf.Variable(self.config_manager.get_trait_value('COHESION_DISTANCE'), dtype=tf.float32)
@@ -34,30 +35,82 @@ class TensorFlowSimulation:
         self.predator_species = tf.constant([self.config_manager.get_species_trait_value('PREDATOR_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
         self.prey_species = tf.constant([self.config_manager.get_species_trait_value('PREY_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
     
+        # Profiling properties
+        self.profiling_enabled = False
+        self.profiling_results = {}
+
+    #------------------for profiling---------------------
+    
+    def enable_profiling(self):
+        self.profiling_enabled = True
+        self.profiling_results = {}
+
+    def disable_profiling(self):
+        self.profiling_enabled = False
+
+    def profile(func):
+        def wrapper(self, *args, **kwargs):
+            if not self.profiling_enabled:
+                return func(self, *args, **kwargs)
+
+            start_time = time.time()
+            result = func(self, *args, **kwargs)
+            end_time = time.time()
+
+            func_name = func.__name__
+            execution_time = end_time - start_time
+
+            if func_name not in self.profiling_results:
+                self.profiling_results[func_name] = []
+            self.profiling_results[func_name].append(execution_time)
+
+            return result
+        return wrapper
+    
+    def get_profiling_results(self):
+        if not self.profiling_enabled:
+            return "Profiling is not enabled."
+
+        results = "Profiling Results:\n"
+        for func_name, times in self.profiling_results.items():
+            avg_time = sum(times) / len(times)
+            results += f"{func_name}: Average execution time: {avg_time:.6f} seconds\n"
+        return results
+
+    def clear_profiling_results(self):
+        self.profiling_results.clear()
+        
+    # ---------------------------------------
+    
     @tf.function
     def calculate_forces(self, positions, species):
         species_forces = self._species_forces(positions, species)
         environment_forces = self._environment_forces(positions)
         return species_forces + environment_forces
 
+    @profile
     @tf.function
     def _environment_forces(self, positions):
+        to_center = self.world_center - positions
+        distances = tf.norm(to_center, axis=1, keepdims=True)
+        normalized_to_center = to_center / (distances + 1e-5)
         
-        # center_attraction
-        to_center, distances = self._calculate_center_distances(positions)
-        center_attraction = self.center_attraction_weight * tf.nn.l2_normalize(to_center, axis=1)
+        # Center attraction (always applied)
+        center_force = self.center_attraction_weight * normalized_to_center
         
-        # circular_confinement
+        # Circular confinement (only applied outside the world radius)
         outside_circle = tf.cast(distances > self.world_radius, tf.float32)
-        circular_confinement = self.confinement_weight * outside_circle * (distances - self.world_radius) * to_center / distances
+        confinement_force = outside_circle * self.confinement_weight * (distances - self.world_radius) * normalized_to_center
         
-        # rotation_force
-        inverse_distance = 1.0 / (distances + 1e-5)
-        rotation_force = tf.stack([to_center[:, 1], -to_center[:, 0]], axis=1)
-        rotation = self.rotation_strength * tf.nn.l2_normalize(rotation_force * inverse_distance, axis=1)
+        # Create perpendicular vector for rotation (counter-clockwise)
+        rotation_force = tf.stack([-to_center[:, 1], to_center[:, 0]], axis=1)
+        rotation_force = tf.nn.l2_normalize(rotation_force, axis=1)
+        rotation_force *= self.rotation_strength
         
-        return center_attraction + circular_confinement + rotation
-    
+        # Combine all forces
+        forces = center_force + confinement_force + rotation_force
+        return forces
+
     @tf.function
     def _species_forces(self, positions, species):
         distances = self._calculate_distances(positions)
@@ -68,48 +121,103 @@ class TensorFlowSimulation:
                   self.cohesion_weight * cohesion + predator_prey)
         
         return self._limit_magnitude(forces, self.max_force)
-    
+ 
+    @profile
     @tf.function
     def _predator_prey_forces(self, positions, distances, species):
         num_agents = tf.shape(positions)[0]
-        num_species = 8  # 1から8までの種
+        forces = tf.zeros_like(positions)
 
-        # 各種の捕食者と獲物のマスクを一度に作成
-        species_mask = tf.equal(tf.expand_dims(species, 0), tf.range(1, num_species + 1, dtype=tf.int32)[:, tf.newaxis])
-        predator_mask = tf.equal(tf.expand_dims(species, 1), tf.gather(self.predator_species, species - 1))
-        prey_mask = tf.equal(tf.expand_dims(species, 1), tf.gather(self.prey_species, species - 1))
+        # 種ごとの捕食者と獲物のインデックスを事前計算
+        predator_indices = tf.gather(self.predator_species, species - 1)
+        prey_indices = tf.gather(self.prey_species, species - 1)
 
-        # 逃避と追跡のマスクを作成
+        # 各エージェントの種、捕食者、獲物の種を一度に取得
+        species_mask = tf.equal(tf.expand_dims(species, 0), tf.range(1, 9, dtype=tf.int32)[:, tf.newaxis])
+        predator_mask = tf.equal(tf.expand_dims(species, 1), predator_indices)
+        prey_mask = tf.equal(tf.expand_dims(species, 1), prey_indices)
+
+        # 逃避と追跡の距離マスクを作成
         escape_mask = tf.logical_and(predator_mask, distances < self.escape_distance)
         chase_mask = tf.logical_and(prey_mask, distances < self.chase_distance)
 
-        # 最も近い捕食者と獲物を見つける
-        escape_distances = tf.where(escape_mask, distances, tf.fill(tf.shape(distances), tf.float32.max))
-        chase_distances = tf.where(chase_mask, distances, tf.fill(tf.shape(distances), tf.float32.max))
-        nearest_predator = tf.argmin(escape_distances, axis=1)
-        nearest_prey = tf.argmin(chase_distances, axis=1)
+        # 位置の差分を一度に計算
+        pos_diff = tf.expand_dims(positions, 1) - positions
 
-        # 逃避力と追跡力を計算
-        escape_direction = positions - tf.gather(positions, nearest_predator)
-        chase_direction = tf.gather(positions, nearest_prey) - positions
-
+        # 逃避力の計算
+        escape_directions = tf.where(
+            tf.expand_dims(escape_mask, -1),
+            pos_diff,
+            tf.zeros_like(pos_diff)
+        )
+        escape_force = tf.reduce_sum(escape_directions, axis=1)
         escape_force = tf.where(
             tf.reduce_any(escape_mask, axis=1, keepdims=True),
-            tf.nn.l2_normalize(escape_direction, axis=1) * self.escape_weight,
-            tf.zeros_like(positions)
+            tf.nn.l2_normalize(escape_force, axis=1) * self.escape_weight,
+            tf.zeros_like(escape_force)
         )
 
+        # 追跡力の計算
+        chase_directions = tf.where(
+            tf.expand_dims(chase_mask, -1),
+            -pos_diff,
+            tf.zeros_like(pos_diff)
+        )
+        chase_force = tf.reduce_sum(chase_directions, axis=1)
         chase_force = tf.where(
             tf.reduce_any(chase_mask, axis=1, keepdims=True),
-            tf.nn.l2_normalize(chase_direction, axis=1) * self.chase_weight,
-            tf.zeros_like(positions)
+            tf.nn.l2_normalize(chase_force, axis=1) * self.chase_weight,
+            tf.zeros_like(chase_force)
         )
 
-        # 種ごとの力を合計
+        # 合計力の計算
         total_force = escape_force + chase_force
 
         return total_force
+   
+    # @profile
+    # @tf.function
+    # def _predator_prey_forces(self, positions, distances, species):
+    #     num_agents = tf.shape(positions)[0]
+    #     num_species = 8  # 1から8までの種
+
+    #     # 各種の捕食者と獲物のマスクを一度に作成
+    #     species_mask = tf.equal(tf.expand_dims(species, 0), tf.range(1, num_species + 1, dtype=tf.int32)[:, tf.newaxis])
+    #     predator_mask = tf.equal(tf.expand_dims(species, 1), tf.gather(self.predator_species, species - 1))
+    #     prey_mask = tf.equal(tf.expand_dims(species, 1), tf.gather(self.prey_species, species - 1))
+
+    #     # 逃避と追跡のマスクを作成
+    #     escape_mask = tf.logical_and(predator_mask, distances < self.escape_distance)
+    #     chase_mask = tf.logical_and(prey_mask, distances < self.chase_distance)
+
+    #     # 最も近い捕食者と獲物を見つける
+    #     escape_distances = tf.where(escape_mask, distances, tf.fill(tf.shape(distances), tf.float32.max))
+    #     chase_distances = tf.where(chase_mask, distances, tf.fill(tf.shape(distances), tf.float32.max))
+    #     nearest_predator = tf.argmin(escape_distances, axis=1)
+    #     nearest_prey = tf.argmin(chase_distances, axis=1)
+
+    #     # 逃避力と追跡力を計算
+    #     escape_direction = positions - tf.gather(positions, nearest_predator)
+    #     chase_direction = tf.gather(positions, nearest_prey) - positions
+
+    #     escape_force = tf.where(
+    #         tf.reduce_any(escape_mask, axis=1, keepdims=True),
+    #         tf.nn.l2_normalize(escape_direction, axis=1) * self.escape_weight,
+    #         tf.zeros_like(positions)
+    #     )
+
+    #     chase_force = tf.where(
+    #         tf.reduce_any(chase_mask, axis=1, keepdims=True),
+    #         tf.nn.l2_normalize(chase_direction, axis=1) * self.chase_weight,
+    #         tf.zeros_like(positions)
+    #     )
+
+    #     # 種ごとの力を合計
+    #     total_force = escape_force + chase_force
+
+    #     return total_force
     
+    @profile
     @tf.function
     def _separation(self, positions, distances):
         mask = tf.cast(tf.logical_and(distances < self.separation_distance, distances > 0), tf.float32)
@@ -118,6 +226,7 @@ class TensorFlowSimulation:
         count = tf.reduce_sum(mask, axis=1, keepdims=True)
         return tf.where(count > 0, steer / count, 0)
 
+    @profile
     @tf.function
     def _cohesion(self, positions, distances):
         mask = tf.cast(tf.logical_and(distances < self.cohesion_distance, distances > 0), tf.float32)
@@ -125,17 +234,21 @@ class TensorFlowSimulation:
         count = tf.reduce_sum(mask, axis=1, keepdims=True)
         center_of_mass = tf.where(count > 0, center_of_mass / count, positions)
         return center_of_mass - positions
-
+    
+ 
+    @profile
     @tf.function
     def _calculate_center_distances(self, positions):
         to_center = self.world_center - positions
         distances = tf.norm(to_center, axis=1, keepdims=True)
         return to_center, distances
 
+    @profile
     @tf.function
     def _calculate_distances(self, positions):
         return tf.norm(positions[:, tf.newaxis, :] - positions, axis=2)
 
+    
     @tf.function
     def _limit_magnitude(self, vectors, max_magnitude):
         magnitudes = tf.norm(vectors, axis=1, keepdims=True)

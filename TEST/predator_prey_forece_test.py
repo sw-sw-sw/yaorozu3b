@@ -7,7 +7,7 @@ from tensorflow_simulation import TensorFlowSimulation
 pygame.init()
 
 # Constants
-WIDTH, HEIGHT = 1000, 1000
+WIDTH, HEIGHT = 2000, 2000
 AGENT_RADIUS = 5
 SPECIES_COLORS = [
     (255, 0, 0), (0, 255, 0), (0, 0, 255),
@@ -22,11 +22,12 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Predator-Prey Forces Test")
 
 # Initialize TensorFlowSimulation
-tf_sim = TensorFlowSimulation(None)  # Pass None as we're not using queues
+mock_queues = {'ui_to_tensorflow': None}
+tf_sim = TensorFlowSimulation(mock_queues)  # Pass None as we're not using queues
 
 # Initialize agents
 num_species = 8
-agents_per_species = 300
+agents_per_species = 50
 total_agents = num_species * agents_per_species
 
 positions = np.random.rand(total_agents, 2) * np.array([WIDTH, HEIGHT])
@@ -62,7 +63,6 @@ while running:
 
     # Calculate forces using only predator_prey_forces
     forces = tf_sim._predator_prey_forces(tf_positions, tf.norm(tf_positions[:, tf.newaxis, :] - tf_positions, axis=2), tf_species)
-    # forces = tf_sim._predator_prey_forces2(tf_positions, tf_species)
 
     forces_np = forces.numpy()
 

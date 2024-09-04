@@ -1,0 +1,52 @@
+Profiling Test Results - 20240904_174645
+Number of agents: 1000
+Number of iterations: 100
+Total execution time: 1.51 seconds
+
+Profiling Results:
+Profiling Results:
+_calculate_distances: Average execution time: 0.018697 seconds
+_separation: Average execution time: 0.034359 seconds
+_cohesion: Average execution time: 0.031849 seconds
+_predator_prey_forces: Average execution time: 0.131743 seconds
+_environment_forces: Average execution time: 0.045575 seconds
+
+Detailed Analysis:
+
+_calculate_distances:
+  Average time: 0.018697 seconds
+  Minimum time: 0.018697 seconds
+  Maximum time: 0.018697 seconds
+  Total time: 0.018697 seconds
+  Percentage of total execution time: 0.07%
+
+_separation:
+  Average time: 0.034359 seconds
+  Minimum time: 0.034359 seconds
+  Maximum time: 0.034359 seconds
+  Total time: 0.034359 seconds
+  Percentage of total execution time: 0.13%
+
+_cohesion:
+  Average time: 0.031849 seconds
+  Minimum time: 0.031849 seconds
+  Maximum time: 0.031849 seconds
+  Total time: 0.031849 seconds
+  Percentage of total execution time: 0.12%
+
+_predator_prey_forces:
+  Average time: 0.131743 seconds
+  Minimum time: 0.131743 seconds
+  Maximum time: 0.131743 seconds
+  Total time: 0.131743 seconds
+  Percentage of total execution time: 0.50%
+
+_environment_forces:
+  Average time: 0.045575 seconds
+  Minimum time: 0.045575 seconds
+  Maximum time: 0.045575 seconds
+  Total time: 0.045575 seconds
+  Percentage of total execution time: 0.17%
+
+==================================================
+

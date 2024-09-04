@@ -44,9 +44,13 @@ Count
 基本はキューを受けてアップデイトする
 　最新状態のキューを一つだけ保持する
 
-Tensorflowのforce=>box2dに送る
-box2dのpositions => renderとtensorflowに送る
-基本はupdate()で内部状態を更新する
+Tensorflowのforce=>box2dに送る、queueを受け取って、内部のfoeceをアップデイトする。
+
+box2dのpositions 
+=> tensorflowに送る。tensorflowは内部のpositionsをアップデイトする。
+=> render_queueに送る。順次、描画する。
+　creatureの点滅も追加する。
+　将来、描画をprocessingに移す？
 
 visual_systemはrender_queueをもらって自分の内部状態を更新する
 　creatureの辞書のポジションを更新する
@@ -60,6 +64,10 @@ ecoは、add/remove作業をqueueを使ってする
 　
 そうするとパラレルに動作できる
 ```
+# forcesの整理
+forecesは、それぞれの力の比率が問題
+species forecesとenvironment forcesの割合を1対1にスケーリングする。
+いらないforeceは何か？
 
 
 ---
