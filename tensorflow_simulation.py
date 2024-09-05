@@ -184,14 +184,14 @@ class TensorFlowSimulation:
         return center_of_mass - positions
     
  
-    @profile
+
     @tf.function
     def _calculate_center_distances(self, positions):
         to_center = self.world_center - positions
         distances = tf.norm(to_center, axis=1, keepdims=True)
         return to_center, distances
 
-    @profile
+    
     @tf.function
     def _calculate_distances(self, positions):
         return tf.norm(positions[:, tf.newaxis, :] - positions, axis=2)
