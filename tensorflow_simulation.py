@@ -165,7 +165,6 @@ class TensorFlowSimulation:
 
         return total_force
     
-    @profile
     @tf.function
     def _separation(self, positions, distances):
         mask = tf.cast(tf.logical_and(distances < self.separation_distance, distances > 0), tf.float32)
@@ -174,7 +173,6 @@ class TensorFlowSimulation:
         count = tf.reduce_sum(mask, axis=1, keepdims=True)
         return tf.where(count > 0, steer / count, 0)
 
-    @profile
     @tf.function
     def _cohesion(self, positions, distances):
         mask = tf.cast(tf.logical_and(distances < self.cohesion_distance, distances > 0), tf.float32)
