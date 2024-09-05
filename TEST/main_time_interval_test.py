@@ -25,9 +25,6 @@ def tf_loop(shared_positions, shared_forces, num_agents, world_width, world_heig
         tf_time.value = timer.calculate()
         timer.adjust_time(box2d_time.value)
 
-
-
-
 def box2d_loop(shared_positions, shared_forces, num_agents, world_width, world_height, rendering_queue, running, tf_time, box2d_time, fps_update_interval):
     from box2d_simulation import Box2DSimulation
     from timer import Timer

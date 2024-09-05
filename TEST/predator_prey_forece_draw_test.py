@@ -2,7 +2,7 @@ import pygame
 import numpy as np
 import tensorflow as tf
 from tensorflow_simulation import TensorFlowSimulation
-
+from timer import Timer
 # Initialize pygame
 pygame.init()
 
@@ -15,7 +15,10 @@ SPECIES_COLORS = [
     (128, 128, 128), (255, 128, 0)
 ]
 FORCE_SCALE = 5  # Reduced scale factor for force vector visualization
-MAX_VECTOR_LENGTH = 1  # Maximum length of force vectors in pixels
+MAX_VECTOR_LENGTH = 3  # Maximum length of force vectors in pixels
+
+#Set up timer
+timer = Timer('tensorflow')
 
 # Set up the display
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -57,36 +60,27 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
-    # Convert numpy arrays to TensorFlow tensors
+    timer.start()
     tf_positions = tf.convert_to_tensor(positions, dtype=tf.float32)
     tf_species = tf.convert_to_tensor(species, dtype=tf.int32)
-
-    # Calculate forces using only predator_prey_forces
     forces = tf_sim._predator_prey_forces(tf_positions, tf.norm(tf_positions[:, tf.newaxis, :] - tf_positions, axis=2), tf_species)
-
     forces_np = forces.numpy()
-
+    timer.print_average_time(1)
+    
     # Update velocities and positions
-    velocities += forces_np * 0.1  # Adjust the multiplier to control force strength
+    velocities += forces_np * 0.01  # Adjust the multiplier to control force strength
     velocities *= 0.99  # Add some damping
     positions += velocities * 0.1  # Adjust the multiplier to control speed
 
     # Wrap around screen edges
     positions %= np.array([WIDTH, HEIGHT])
 
-    # Clear the screen
-    screen.fill((0, 0, 0))
-
     # Draw agents and force vectors
+    screen.fill((0, 0, 0))
     for pos, force, spec in zip(positions, forces_np, species):
         color = SPECIES_COLORS[spec - 1]
         pygame.draw.circle(screen, color, pos.astype(int), AGENT_RADIUS, 1)
         draw_force_vector(screen, pos, force, color)
-
-    # Update the display
     pygame.display.flip()
-
-    # Control the frame rate
     clock.tick(60)
-
 pygame.quit()
