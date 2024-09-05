@@ -25,9 +25,9 @@ MAX_FORCE,100,100,100,100,100,100,100,100,100,5,300,Maximum force applied to age
 INITIAL_AGENT_NUM,20,20,20,20,20,20,20,20,20,1,1000,Initial number of agents per species
 ,,,,,,,,,,,,
 ESCAPE_DISTANCE,20,20,20,20,20,20,20,20,20,5,500,Distance to start escaping
-ESCAPE_WEIGHT,50,50,50,50,50,50,50,50,50,0,50,Weight for escape behavior
+ESCAPE_WEIGHT,0,50,50,50,50,50,50,50,50,0,50,Weight for escape behavior
 CHASE_DISTANCE,200,50,50,50,50,50,50,50,50,5,500,Distance to start chasing
-CHASE_WEIGHT,50,50,50,50,50,50,50,50,50,0,100,Weight for chase behavior
+CHASE_WEIGHT,0,50,50,50,50,50,50,50,50,0,100,Weight for chase behavior
 ,,,,,,,,,,,,
 MASS,10,3.0,6.0,25,8,1,10,5,8.0,1.0,10,Mass of agents
 FRICTION,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0.4,0,1,Friction coefficient

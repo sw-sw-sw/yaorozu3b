@@ -30,7 +30,7 @@ tf_sim = TensorFlowSimulation(mock_queues)  # Pass None as we're not using queue
 
 # Initialize agents
 num_species = 8
-agents_per_species = 50
+agents_per_species = 375
 total_agents = num_species * agents_per_species
 
 positions = np.random.rand(total_agents, 2) * np.array([WIDTH, HEIGHT])

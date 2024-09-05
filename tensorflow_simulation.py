@@ -110,7 +110,7 @@ class TensorFlowSimulation:
         
         # Combine all forces
         forces = center_force + confinement_force + rotation_force
-        return forces
+        return self._limit_magnitude(forces, self.max_force)
 
     @tf.function
     def _species_forces(self, positions, species):
