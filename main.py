@@ -29,13 +29,11 @@ def tf_run(queues, shared_memory, running, initialization_complete):
     
     while running.value:
         timer.start()
-        tf_positions = saa.get_tf_positions(shared_memory)
-        tf_species = saa.get_tf_species(shared_memory)
-        calculated_forces = tensorflow.calculate_forces(tf_positions, tf_species)
-        saa.set_forces(shared_memory, calculated_forces.numpy())
-
+        tensorflow.update_property(shared_memory)
+        tensorflow.calculate_forces()
+        tensorflow.update_forces(shared_memory)
         tensorflow.update_parameters()
-
+        
         shared_memory['tf_time'].value = timer.calculate_time()
         timer.sleep_time(shared_memory['box2d_time'].value)
         timer.print_fps(5)

@@ -1,6 +1,8 @@
 import tensorflow as tf
 from config_manager import ConfigManager
 import time
+import numpy as np
+import ctypes
 
 
 class TensorFlowSimulation:
@@ -31,8 +33,13 @@ class TensorFlowSimulation:
         self.chase_distance = tf.Variable(self.config_manager.get_trait_value('CHASE_DISTANCE'), dtype=tf.float32)
         self.chase_weight = tf.Variable(self.config_manager.get_trait_value('CHASE_WEIGHT'), dtype=tf.float32)
 
+        # 共有メインプロパティー
+        self.tf_positions = tf.Variable(tf.zeros((self.max_agents_num, 2), dtype=tf.float32))
+        self.tf_forces = tf.Variable(tf.zeros((self.max_agents_num, 2), dtype=tf.float32))
+        self.tf_current_agent_count = tf.Variable(0, dtype=tf.int32)  # 初期値を0に変更
+        self.tf_agent_species = tf.Variable(tf.zeros([self.max_agents_num], dtype=tf.int32))
+
         # 種別情報の初期化
-        self.species = tf.Variable(tf.zeros([self.max_agents_num], dtype=tf.int32))
         self.predator_species = tf.constant([self.config_manager.get_species_trait_value('PREDATOR_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
         self.prey_species = tf.constant([self.config_manager.get_species_trait_value('PREY_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
     
@@ -80,14 +87,36 @@ class TensorFlowSimulation:
 
     def clear_profiling_results(self):
         self.profiling_results.clear()
-        
-    # ---------------------------------------
+    # ---------------- property update -----------------------
     
+    def update_property(self, shared_memory):
+        # positions
+        positions_np = np.frombuffer(shared_memory['positions'].get_obj(), dtype=np.float32)
+        positions_np = positions_np.reshape((self.max_agents_num, 2))
+        self.tf_positions.assign(tf.convert_to_tensor(positions_np, dtype=tf.float32))
+        # agent_species
+        agent_species_np = np.frombuffer(shared_memory['agent_species'].get_obj(), dtype=np.int32)
+        self.tf_agent_species.assign(tf.convert_to_tensor(agent_species_np, dtype=tf.int32))
+        # current_agent_coun
+        current_agent_count = shared_memory['current_agent_count'].value
+        self.tf_current_agent_count.assign(tf.constant(current_agent_count, dtype=tf.int32))
+
+    def update_forces(self, shared_memory):
+        np_array = np.frombuffer(shared_memory['forces'].get_obj(), dtype=np.float32).reshape(-1, 2)
+        tf_forces_np = self.tf_forces.numpy()
+        np.copyto(np_array[:self.tf_current_agent_count.numpy()], tf_forces_np[:self.tf_current_agent_count.numpy()])
+        
     @tf.function
-    def calculate_forces(self, positions, species):
+    def calculate_forces(self):
+        positions = self.tf_positions[:self.tf_current_agent_count]
+        species = self.tf_agent_species[:self.tf_current_agent_count]
         species_forces = self._species_forces(positions, species)
         environment_forces = self._environment_forces(positions)
-        return species_forces + environment_forces
+        total_forces = species_forces + environment_forces
+        limited_forces = self._limit_magnitude(total_forces, self.max_force)
+        # パディングを追加して max_agents_num の長さにする
+        padded_forces = tf.pad(limited_forces, [[0, self.max_agents_num - self.tf_current_agent_count], [0, 0]])
+        self.tf_forces.assign(padded_forces)
 
     @profile
     @tf.function
@@ -203,11 +232,9 @@ class TensorFlowSimulation:
         scale = tf.minimum(max_magnitude / magnitudes, 1.0)
         return vectors * scale
 
-    def update_species(self, species):
-        self.species.assign(species)
-
     def update_parameters(self):
         while not self.ui_to_tensorflow_queue.empty():
             param_name, value = self.ui_to_tensorflow_queue.get()
+            print(param_name, value)
             if hasattr(self, param_name):
                 getattr(self, param_name).assign(value)

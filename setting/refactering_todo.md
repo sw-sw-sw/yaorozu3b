@@ -77,3 +77,4 @@ species forecesとenvironment forcesの割合を1対1にスケーリングする
 - 衝突検知を入れる
 - 捕食処理を入れる
 - 増殖処理を入れる
+- 最適化(numbaを取り入れたり・・・)
