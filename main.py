@@ -10,65 +10,59 @@ from ecosystem import Ecosystem
 from config_manager import ConfigManager
 from parameter_control_ui import *
 from timer import Timer
-import sparse_agent_array as saa
 from log import *
 
 
 #------------------------------------- Main routine -----------------------------------------
 
-def eco_run(queues, shared_memory, running, initialization_complete):
+def eco_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     ecosystem = Ecosystem(queues)
-    ecosystem.initialize_agents(shared_memory)
-    initialization_complete.set()
+    ecosystem.initialize(shared_memory)
+    eco_init_done.set()  # Signal that Ecosystem initialization is complete
+    initialization_complete['Ecosystem'].set()
     ecosystem.run(shared_memory, running)
 
-def tf_run(queues, shared_memory, running, initialization_complete):
+def tf_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     tensorflow = TensorFlowSimulation(queues)
     timer = Timer("TensorFlow")
-    initialization_complete.set()
+    
+    eco_init_done.wait()  # Wait for Ecosystem initialization to complete
+    tensorflow.initialize()
+    initialization_complete['TensorFlow'].set()
     
     while running.value:
         timer.start()
-        tensorflow.update_property(shared_memory)
-        tensorflow.calculate_forces()
-        tensorflow.update_forces(shared_memory)
+        tensorflow.run()
         tensorflow.update_parameters()
-        
-        shared_memory['tf_time'].value = timer.calculate_time()
-        timer.sleep_time(shared_memory['box2d_time'].value)
         timer.print_fps(5)
         time.sleep(0.005)
-        
 
-def box2d_run(queues, shared_memory, running, initialization_complete):
+def box2d_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     box2d = Box2DSimulation(queues)
     timer = Timer("Box2D")
-    box2d.create_bodies()
-    initialization_complete.set()
+    
+    eco_init_done.wait()  # Wait for Ecosystem initialization to complete
+    box2d.initialize()
+    initialization_complete['Box2D'].set()
     
     while running.value:
         timer.start()
-        box2d.apply_forces_to_box2d(shared_memory['forces'])
-        box2d.step()
-        box2d.apply_positions_to_shared_memory(shared_memory['positions'])
-        
-        box2d.add_positions_to_render_queue()
-        shared_memory['box2d_time'].value = timer.calculate_time()
-        timer.sleep_time(shared_memory['tf_time'].value)
+        box2d.run()
         timer.print_fps(5)
-        
         time.sleep(0.005)
 
-def visual_system_run(queues, shared_memory, running, initialization_complete):
+def visual_system_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     visual_system = VisualSystem(queues)
-    initialization_complete.set()
+    eco_init_done.wait() 
+    visual_system.initialize()
+    initialization_complete['Visual'].set()
     
     while running.value:
-        if not visual_system.update():
+        if not visual_system.run():
             break
 
     visual_system.cleanup()
-    
+
 def run_simulation():
     logger.info("Starting simulation")
     
@@ -102,14 +96,13 @@ def run_simulation():
     queues = {
         'eco_to_box2d': mp.Queue(),
         'eco_to_visual': mp.Queue(),
+        'eco_to_tf': mp.Queue(),
         'eco_to_visual_creatures': mp.Queue(),
         'eco_to_box2d_creatures': mp.Queue(),
-        'eco_to_tensorflow': mp.Queue(),
-        'box2d_to_eco': mp.Queue(),
-        'visual_to_eco': mp.Queue(),
-        'tensorflow_to_eco': mp.Queue(),
-        'rendering_queue': mp.Queue(maxsize=1),
-        'ui_to_tensorflow': mp.Queue()  # 新しく追加
+        'box2d_to_tf': mp.Queue(maxsize=3),
+        'tf_to_box2d': mp.Queue(maxsize=3),
+        'box2d_to_visual_render': mp.Queue(maxsize=30),
+        'ui_to_tensorflow': mp.Queue() 
     }
 
     initialization_complete = {
@@ -118,30 +111,31 @@ def run_simulation():
         'Box2D': mp.Event(),
         'Visual': mp.Event()
     }
+    running = mp.Value('b', True)
+    eco_init_done = mp.Event()  # New event to signal Ecosystem initialization completion
 
     processes = [
-        mp.Process(target=eco_run, args=(queues, shared_memory, running, initialization_complete['Ecosystem']), name='Ecosystem'),
-        mp.Process(target=tf_run, args=(queues, shared_memory, running, initialization_complete['TensorFlow']), name="TensorFlow"),
-        mp.Process(target=box2d_run, args=(queues, shared_memory, running, initialization_complete['Box2D']), name="Box2D"),
-        mp.Process(target=visual_system_run, args=(queues, shared_memory, running, initialization_complete['Visual']), name="Visual"),
-        mp.Process(target=run_parameter_control_ui, args=(shared_memory, queues, running), name="ParameterControlUI")  # 新しく追加
-]
+        mp.Process(target=eco_run, args=(queues, shared_memory, running, initialization_complete, eco_init_done), name='Ecosystem'),
+        mp.Process(target=tf_run, args=(queues, shared_memory, running, initialization_complete, eco_init_done), name="TensorFlow"),
+        mp.Process(target=box2d_run, args=(queues, shared_memory, running, initialization_complete, eco_init_done), name="Box2D"),
+        mp.Process(target=visual_system_run, args=(queues, shared_memory, running, initialization_complete, eco_init_done), name="Visual"),
+        mp.Process(target=run_parameter_control_ui, args=(shared_memory, queues, running), name="ParameterControlUI")
+    ]
 
     for process in processes:
         logger.info(f"Starting {process.name} process")
         process.start()
-
+    logger.info("Waiting for Ecosystem to initialize...")
+    eco_init_done.wait()
+    logger.info("Ecosystem initialization complete")
+    # 全てのプロセスの初期化完了を待つ
     for name, event in initialization_complete.items():
         logger.info(f"Waiting for {name} to initialize...")
         event.wait()
         logger.info(f"{name} initialization complete")
 
+    # 全てのプロセスが初期化完了したことを通知
     logger.info("All processes initialized and running")
-
-    monitor_thread = threading.Thread(target=monitor_resources)
-    monitor_thread.daemon = True
-    monitor_thread.start()
-    logger.info("Resource monitoring thread started")
 
     try:
         while all(p.is_alive() for p in processes):

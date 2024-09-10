@@ -41,6 +41,7 @@ BIRTH_THRESHOLD,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0,10,Threshold for agent rep
 REPRODUCTION_RATE,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.1,1.0,Rate of reproduction
 ,,,,,,,,,,,,
 SIZE,10,3.0,6.0,25,8,1,10,5,8.0,1.0,50.0,Size of agents
+RADIUS,6.0,17.0,7.6000000000000005,13.5,13.0,10.5,9.0,8.5,5.0,1.5,506.0,,Calculated radius of agents
 SPEED,0,0.03,0.04,0.05,0.06,0.03,0.08,0.05,0.0,0.0,0.1,Speed of agents
 HORN_NUM,0,8.0,5.0,15.0,3.0,0.0,6,1.0,0.0,0.0,20.0,Number of horns
 HORN_LENGTH,0,5.8,2.2,0.6,3,0.0,1.6,3.0,0.0,0.0,10.0,Length of horns

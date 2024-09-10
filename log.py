@@ -9,10 +9,3 @@ def setup_logging():
 logger = setup_logging()
 
 
-def monitor_resources():
-    while True:
-        cpu_percent = psutil.cpu_percent()
-        memory_percent = psutil.virtual_memory().percent
-        logger.info(f"CPU usage: {cpu_percent}%, Memory usage: {memory_percent}%")
-        time.sleep(5)
-

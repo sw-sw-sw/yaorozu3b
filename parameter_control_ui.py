@@ -123,11 +123,11 @@ class ParameterControlUI:
         self.load_saved_files_list()
 
     def load_saved_files_list(self):
-        self.saved_files = sorted(glob.glob(os.path.join(self.params_folder, 'simulation_settings_*.json')))
+        self.saved_files = sorted([os.path.basename(f) for f in glob.glob(os.path.join(self.params_folder, 'simulation_settings_*.json'))])
         
         if hasattr(self, 'saved_settings_combobox'):
-            self.saved_settings_combobox['values'] = [os.path.basename(f) for f in self.saved_files]
-
+            self.saved_settings_combobox['values'] = self.saved_files
+            
     def load_selected_settings(self):
         selected_file = self.saved_settings_combobox.get()
         if selected_file:

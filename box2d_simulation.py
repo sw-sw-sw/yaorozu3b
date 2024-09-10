@@ -4,16 +4,22 @@ import logging
 import random
 import time
 from config_manager import ConfigManager
+from log import *
+from queue import Empty
 
-logger = logging.getLogger(__name__)
 
 class Box2DSimulation:
     def __init__(self, queues):
-        
+        self.queues = queues  # この行を追加
+
         self.world = b2World(gravity=(0, 0), doSleep=True)
-        self.bodies = []
-        self._rendering_queue = queues['rendering_queue']
+        self.bodies = {}
+        
+        #queues
+        self._box2d_to_visual_render = queues['box2d_to_visual_render']
         self._eco_to_box2d_creatures = queues['eco_to_box2d_creatures']
+        self._tf_to_box2d  = queues['tf_to_box2d']
+        self._box2d_to_tf = queues['box2d_to_tf']
         
         # ConfigManagerから値を取得してプロパティとして設定
         self.config_manager = ConfigManager()
@@ -21,56 +27,113 @@ class Box2DSimulation:
         self.random_velocity_interval = self.config_manager.get_trait_value('RANDOM_VELOCITY_INTERVAL')
         self.random_speed = self.config_manager.get_trait_value('RANDOM_SPEED')
         self.dt = self.config_manager.get_trait_value('DT') 
+
         self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
+        self.agent_species = np.zeros(self.max_agents_num, dtype=np.int32)
+        self.current_agent_count = 0
+
+
         self.last_random_velocity_time = time.time()
   
         
-    #------------------- initialize --------------------    
+    def initialize(self):
+        init_data = self._eco_to_box2d_creatures.get()
+        self.positions = init_data['positions']
+        self.species = init_data['species']
+        self.agent_species = init_data['species']
+        self.current_agent_count = init_data['current_agent_count']
+
+        for agent_id in range(self.current_agent_count):
+            self._create_body(agent_id)
+
+
+
+    #------------------- create body  --------------------    
+    
     def create_bodies(self):
         for _ in range(self.max_agents_num):
             creature_info = self._eco_to_box2d_creatures.get()
             self._create_body(creature_info)
+        self.current_agent_count = self.max_agents_num
+            
         logger.info(f"Created {self.max_agents_num} bodies in Box2D simulation")
 
-    def _create_body(self, creature_info):
-        species =creature_info['agent_species']
+    def _create_body(self, agent_id):
+        species = self.species[agent_id]
         linear_damping = self.config_manager.get_species_trait_value('DAMPING', species)
         density = self.config_manager.get_species_trait_value('DENSITY', species)
         restitution = self.config_manager.get_species_trait_value('RESTITUTION', species)
         friction = self.config_manager.get_species_trait_value('FRICTION', species)
         mass = self.config_manager.get_species_trait_value('MASS', species)
-        
+        radius = self.config_manager.get_species_trait_value('RADIUS', species)
+        x = float(self.positions[agent_id][0])
+        y = float(self.positions[agent_id][1])        
         body_def = b2BodyDef(
             type=b2_dynamicBody,
-            position=b2Vec2(creature_info['x'], creature_info['y']),
-            linearVelocity=b2Vec2(0, 0),
+            position=b2Vec2(x, y),
+            linearVelocity=b2Vec2(0.0, 0.0),
             linearDamping=linear_damping
         )
         body = self.world.CreateBody(body_def)
-        circle_shape = b2CircleShape(radius=creature_info['radius'])
+        circle_shape = b2CircleShape(radius=radius)
         body.CreateFixture(shape=circle_shape, density=density, 
                            friction=friction, restitution=restitution)
-        body.mass = mass * creature_info['radius']
-        self.bodies.append(body)
+        body.mass = mass * circle_shape.radius
+        self.bodies[agent_id] = body
         
-    # ------------------ update ---------------------
-    def apply_forces_to_box2d(self, _forces):
-        forces = np.frombuffer(_forces.get_obj(), dtype=np.float32).reshape((self.max_agents_num, 2))
-        for body, force in zip(self.bodies, forces):
-            body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
+    # ------------------- remove body --------------------
 
-    def apply_positions_to_shared_memory(self, _positions):
-        positions = self.get_positions()
-        np.frombuffer(_positions.get_obj(), dtype=np.float32).reshape((self.max_agents_num, 2))[:] = positions
+    def remove_body(self):
+        pass
 
-    def get_positions(self):
-        return np.array([(body.position.x, body.position.y) for body in self.bodies], dtype=np.float32)
+    # ------------------Main routine ---------------------
 
-    def add_positions_to_render_queue(self):
-        if self._rendering_queue.empty():
-            self._rendering_queue.put(self.get_positions())
+    def run(self):
+        self.update_forces()
+        self.step()
+        self.update_positions()
+        self.send_data_to_tf()
+        self.send_data_to_visual()
+        
+        
+    def update_forces(self):
+        try:
+            while not self._tf_to_box2d.empty():
+                forces = self._tf_to_box2d.get_nowait()
+                for agent_id, force in zip(self.bodies.keys(), forces):
+                    body = self.bodies[agent_id]
+                    body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
+        except Empty:
+            logger.warning("No new forces received from TensorFlow")
             
-    # -----------------random move ----------------------
+    def step(self):
+        self.world.Step(self.dt, 6, 2)
+        # self.apply_random_velocity() # random move
+
+    def update_positions(self):
+        for agent_id, body in self.bodies.items():
+            self.positions[agent_id] = body.position.x, body.position.y
+
+    def send_data_to_tf(self):
+        data = {
+            'positions': self.positions,
+            'agent_species': self.agent_species,
+            'count': self.current_agent_count
+        }
+        self._box2d_to_tf.put(data)
+    
+    def send_data_to_visual(self):
+        visual_data = {
+            'positions': self.positions,
+            'agent_ids': list(self.bodies.keys()),
+            'current_agent_count': self.current_agent_count
+        }
+        self._box2d_to_visual_render.put(visual_data)
+            
+    # ----------------- sub method ----------------------
+    
+    # def get_positions(self):
+    #     return np.array([(body.position.x, body.position.y) for body in self.bodies], dtype=np.float32)
     
     def apply_random_velocity(self):
         current_time = time.time()
@@ -83,8 +146,3 @@ class Box2DSimulation:
             random_body.linearVelocity = random_velocity
             self.last_random_velocity_time = current_time
             
-    # -----------------to renderer ----------------------
-    
-    def step(self):
-        self.world.Step(self.dt, 6, 2)
-        # self.apply_random_velocity() # random move

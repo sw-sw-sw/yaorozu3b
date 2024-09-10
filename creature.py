@@ -63,7 +63,7 @@ class Creature(pygame.sprite.Sprite):
         self.image = pygame.Surface((surface_size, surface_size), pygame.SRCALPHA)
         center = Vector2(surface_size / 2, surface_size / 2)
         # Draw core
-        pygame.draw.circle(self.image, self._color, center, self._size // 2, 1)
+        pygame.draw.circle(self.image, self._color, center, self._size / 2, 1)
         
         # Draw horns
         if self._horn_num > 0:
@@ -97,7 +97,9 @@ class Creature(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=self._pos)
         
     def get_radius(self):
-        return max(self._size / 2, self._size * self._shell_size / 2 + self._shell_point_size + 2, self._size * self._horn_length / 2) + 1
+        return max(self._size / 2, 
+                   self._size * self._shell_size / 2 + self._shell_point_size + 2, 
+                   self._size * self._horn_length / 2) + 1
     
     def _get_color_from_dna(self):
         color_value = int(self.dna.get_trait("COLOR"))

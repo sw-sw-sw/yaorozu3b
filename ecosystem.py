@@ -10,6 +10,8 @@ class Ecosystem:
         self.config_manager = ConfigManager()
         self.eco_to_visual_creatures = queues['eco_to_visual_creatures']
         self.eco_to_box2d_creatures = queues['eco_to_box2d_creatures']
+        self.eco_to_tf = queues['eco_to_tf']
+
 
         # ConfigManagerから値を取得してプロパティとして設定
         self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
@@ -18,7 +20,7 @@ class Ecosystem:
         self.initial_velocity_min = self.config_manager.get_trait_value('INITIAL_VELOCITY_MIN')
         self.initial_velocity_max = self.config_manager.get_trait_value('INITIAL_VELOCITY_MAX')
 
-    def initialize_agents(self, shared_memory):
+    def initialize(self, shared_memory):
         with shared_memory['lock']:
             np_positions = np.frombuffer(shared_memory['positions'].get_obj(), dtype=np.float32).reshape((self.max_agents_num, 2))
             np_velocities = np.frombuffer(shared_memory['velocities'].get_obj(), dtype=np.float32).reshape((self.max_agents_num, 2))
@@ -41,28 +43,20 @@ class Ecosystem:
             np_forces[:] = np.zeros((self.max_agents_num, 2))
             np_agent_ids[:] = np.arange(self.max_agents_num)
             np_agent_species[:] = np.random.randint(1, 9, self.max_agents_num)
-
+            current_agent_count = self.max_agents_num
             shared_memory['current_agent_count'].value = self.max_agents_num
 
-            for i in range(self.max_agents_num):
-                temp_creature = Creature(np_agent_species[i], pygame.Vector2(np_positions[i][0], np_positions[i][1]))
-                radius = temp_creature.get_radius()
-
-                self.eco_to_visual_creatures.put({
-                    'action': 'create',
-                    'agent_id': int(np_agent_ids[i]),
-                    'agent_species': int(np_agent_species[i]),
-                    'x': float(np_positions[i][0]),
-                    'y': float(np_positions[i][1])
-                })
-                self.eco_to_box2d_creatures.put({
-                    'action': 'create',
-                    'agent_id': int(np_agent_ids[i]),
-                    'agent_species': int(np_agent_species[i]),
-                    'x': float(np_positions[i][0]),
-                    'y': float(np_positions[i][1]),
-                    'radius': float(radius)
-                })
+            # Send initialization data to other components
+            init_data = {
+                'positions': np_positions,
+                'species': np_agent_species,
+                'agent_ids': np_agent_ids,
+                'current_agent_count': current_agent_count
+            }
+            
+            self.eco_to_box2d_creatures.put(init_data)
+            self.eco_to_tf.put(init_data)
+            self.eco_to_visual_creatures.put(init_data)
 
     def run(self, shared_memory, running):
         while running.value:

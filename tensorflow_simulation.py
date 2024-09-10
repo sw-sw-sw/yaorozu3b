@@ -3,12 +3,20 @@ from config_manager import ConfigManager
 import time
 import numpy as np
 import ctypes
+from log import *
+from queue import Empty
+
 
 
 class TensorFlowSimulation:
     def __init__(self, queues):
+       
+        # queue setting
         self.queues = queues
-        self.ui_to_tensorflow_queue = queues['ui_to_tensorflow']
+        self._ui_to_tensorflow_queue = queues['ui_to_tensorflow']
+        self._box2d_to_tf = queues['box2d_to_tf']
+        self._eco_to_tf = queues['eco_to_tf']
+
         self.config_manager = ConfigManager()
         
         # ConfigManagerから値を取得してプロパティとして設定
@@ -46,6 +54,8 @@ class TensorFlowSimulation:
         # Profiling properties
         self.profiling_enabled = False
         self.profiling_results = {}
+        
+        self.initialized = False
 
     #------------------for profiling---------------------
     
@@ -87,24 +97,45 @@ class TensorFlowSimulation:
 
     def clear_profiling_results(self):
         self.profiling_results.clear()
+        
     # ---------------- property update -----------------------
-    
-    def update_property(self, shared_memory):
-        # positions
-        positions_np = np.frombuffer(shared_memory['positions'].get_obj(), dtype=np.float32)
-        positions_np = positions_np.reshape((self.max_agents_num, 2))
-        self.tf_positions.assign(tf.convert_to_tensor(positions_np, dtype=tf.float32))
-        # agent_species
-        agent_species_np = np.frombuffer(shared_memory['agent_species'].get_obj(), dtype=np.int32)
-        self.tf_agent_species.assign(tf.convert_to_tensor(agent_species_np, dtype=tf.int32))
-        # current_agent_coun
-        current_agent_count = shared_memory['current_agent_count'].value
-        self.tf_current_agent_count.assign(tf.constant(current_agent_count, dtype=tf.int32))
+    def initialize(self):
+        logger.info("TensorFlowSimulation is initializing now")
 
-    def update_forces(self, shared_memory):
-        np_array = np.frombuffer(shared_memory['forces'].get_obj(), dtype=np.float32).reshape(-1, 2)
-        tf_forces_np = self.tf_forces.numpy()
-        np.copyto(np_array[:self.tf_current_agent_count.numpy()], tf_forces_np[:self.tf_current_agent_count.numpy()])
+        while not self.initialized:
+            if not self._eco_to_tf.empty():
+                init_data = self._eco_to_tf.get()
+                self.tf_positions.assign(tf.convert_to_tensor(init_data['positions'], dtype=tf.float32))
+                self.tf_agent_species.assign(tf.convert_to_tensor(init_data['species'], dtype=tf.int32))
+                self.tf_current_agent_count.assign(tf.constant(init_data['current_agent_count'], dtype=tf.int32))
+                self.initialized = True
+                logger.info(f"TensorFlowSimulation Initialized with {self.tf_current_agent_count.numpy()} agents")
+            else:
+                time.sleep(0.1)  # Wait a bit before checking again
+        
+        logger.info("TensorFlowSimulation initialized successfully")
+    # ------------------- Main routine --------------------
+    
+    def run(self):
+        self.update_property()
+        self.calculate_forces()
+        self.send_forces_to_box2d()
+        self.update_parameters()
+
+    def update_property(self):
+        try:
+            while not self._box2d_to_tf.empty():
+                data = self._box2d_to_tf.get_nowait()
+                self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
+                self.tf_agent_species.assign(tf.convert_to_tensor(data['agent_species'], dtype=tf.int32))
+                self.tf_current_agent_count.assign(tf.constant(data['count'], dtype=tf.int32))
+        except Empty:
+            logger.debug("No new data from Box2D to update TensorFlow simulation")
+            
+    def send_forces_to_box2d(self):
+        forces = self.tf_forces.numpy()
+        self.queues['tf_to_box2d'].put(forces)
+        
         
     @tf.function
     def calculate_forces(self):
@@ -233,8 +264,8 @@ class TensorFlowSimulation:
         return vectors * scale
 
     def update_parameters(self):
-        while not self.ui_to_tensorflow_queue.empty():
-            param_name, value = self.ui_to_tensorflow_queue.get()
+        while not self._ui_to_tensorflow_queue.empty():
+            param_name, value = self._ui_to_tensorflow_queue.get()
             print(param_name, value)
             if hasattr(self, param_name):
                 getattr(self, param_name).assign(value)
