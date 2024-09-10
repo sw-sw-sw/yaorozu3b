@@ -123,15 +123,11 @@ class TensorFlowSimulation:
         self.update_parameters()
 
     def update_property(self):
-        try:
-            while not self._box2d_to_tf.empty():
-                data = self._box2d_to_tf.get_nowait()
-                self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
-                self.tf_agent_species.assign(tf.convert_to_tensor(data['agent_species'], dtype=tf.int32))
-                self.tf_current_agent_count.assign(tf.constant(data['count'], dtype=tf.int32))
-        except Empty:
-            logger.debug("No new data from Box2D to update TensorFlow simulation")
-            
+            data = self._box2d_to_tf.get_nowait()
+            self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
+            self.tf_agent_species.assign(tf.convert_to_tensor(data['agent_species'], dtype=tf.int32))
+            self.tf_current_agent_count.assign(tf.constant(data['count'], dtype=tf.int32))
+
     def send_forces_to_box2d(self):
         forces = self.tf_forces.numpy()
         self.queues['tf_to_box2d'].put(forces)

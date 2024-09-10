@@ -97,15 +97,12 @@ class Box2DSimulation:
         
         
     def update_forces(self):
-        try:
-            while not self._tf_to_box2d.empty():
-                forces = self._tf_to_box2d.get_nowait()
-                for agent_id, force in zip(self.bodies.keys(), forces):
-                    body = self.bodies[agent_id]
-                    body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
-        except Empty:
-            logger.warning("No new forces received from TensorFlow")
-            
+        while not self._tf_to_box2d.empty():
+            forces = self._tf_to_box2d.get_nowait()
+            for agent_id, force in zip(self.bodies.keys(), forces):
+                body = self.bodies[agent_id]
+                body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
+    
     def step(self):
         self.world.Step(self.dt, 6, 2)
         # self.apply_random_velocity() # random move

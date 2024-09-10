@@ -99,9 +99,9 @@ def run_simulation():
         'eco_to_tf': mp.Queue(),
         'eco_to_visual_creatures': mp.Queue(),
         'eco_to_box2d_creatures': mp.Queue(),
-        'box2d_to_tf': mp.Queue(maxsize=3),
-        'tf_to_box2d': mp.Queue(maxsize=3),
-        'box2d_to_visual_render': mp.Queue(maxsize=30),
+        'box2d_to_tf': mp.Queue(maxsize=1),
+        'tf_to_box2d': mp.Queue(maxsize=1),
+        'box2d_to_visual_render': mp.Queue(maxsize=100),
         'ui_to_tensorflow': mp.Queue() 
     }
 
