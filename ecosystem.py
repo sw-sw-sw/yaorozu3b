@@ -7,59 +7,78 @@ import time
 
 class Ecosystem:
     def __init__(self, queues):
-        self.config_manager = ConfigManager()
+        self.queues = queues
         self.eco_to_visual_creatures = queues['eco_to_visual_creatures']
         self.eco_to_box2d_creatures = queues['eco_to_box2d_creatures']
         self.eco_to_tf = queues['eco_to_tf']
 
-
+        self.config_manager = ConfigManager()
+        
         # ConfigManagerから値を取得してプロパティとして設定
         self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
         self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
         self.world_height = self.config_manager.get_trait_value('WORLD_HEIGHT')
-        self.initial_velocity_min = self.config_manager.get_trait_value('INITIAL_VELOCITY_MIN')
-        self.initial_velocity_max = self.config_manager.get_trait_value('INITIAL_VELOCITY_MAX')
 
-    def initialize(self, shared_memory):
-        with shared_memory['lock']:
-            np_positions = np.frombuffer(shared_memory['positions'].get_obj(), dtype=np.float32).reshape((self.max_agents_num, 2))
-            np_velocities = np.frombuffer(shared_memory['velocities'].get_obj(), dtype=np.float32).reshape((self.max_agents_num, 2))
-            np_forces = np.frombuffer(shared_memory['forces'].get_obj(), dtype=np.float32).reshape((self.max_agents_num, 2))
-            np_agent_ids = np.frombuffer(shared_memory['agent_ids'].get_obj(), dtype=np.int32)
-            np_agent_species = np.frombuffer(shared_memory['agent_species'].get_obj(), dtype=np.int32)
+        self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
+        self.species = np.zeros(self.max_agents_num, dtype=np.int32)
+        self.current_agent_count = 0
+        self.agent_ids = np.arange(self.max_agents_num, dtype=np.int32)
+    
 
-            # 円形領域の中心と半径を定義
-            center_x, center_y = self.world_width / 2, self.world_height / 2
-            radius = min(self.world_width, self.world_height) / 2
+    def initialize2(self):
 
-            # 円形領域内にランダムな位置を生成
-            angles = np.random.uniform(0, 2 * np.pi, self.max_agents_num)
-            radii = np.sqrt(np.random.uniform(0, 1, self.max_agents_num)) * radius  # 均一な分布のために平方根を使用
-            
-            np_positions[:, 0] = center_x + radii * np.cos(angles)
-            np_positions[:, 1] = center_y + radii * np.sin(angles)
 
-            np_velocities[:] = np.random.uniform(self.initial_velocity_min, self.initial_velocity_max, (self.max_agents_num, 2))
-            np_forces[:] = np.zeros((self.max_agents_num, 2))
-            np_agent_ids[:] = np.arange(self.max_agents_num)
-            np_agent_species[:] = np.random.randint(1, 9, self.max_agents_num)
-            current_agent_count = self.max_agents_num
-            shared_memory['current_agent_count'].value = self.max_agents_num
+        # 正八角形の頂点を計算
+        octagon_radius = self.world_width / 4
+        octagon_centers = []
+        for i in range(8):
+            angle = i * np.pi / 4
+            x = self.world_width / 2 + octagon_radius * np.cos(angle)
+            y = self.world_height / 2 + octagon_radius * np.sin(angle)
+            octagon_centers.append((x, y))
 
-            # Send initialization data to other components
-            init_data = {
-                'positions': np_positions,
-                'species': np_agent_species,
-                'agent_ids': np_agent_ids,
-                'current_agent_count': current_agent_count
-            }
-            
-            self.eco_to_box2d_creatures.put(init_data)
-            self.eco_to_tf.put(init_data)
-            self.eco_to_visual_creatures.put(init_data)
+        # 各種ごとにエージェントの位置とspeciesを初期化
+        current_index = 0
+        for species in range(1, 9):
+            initial_agent_num = self.config_manager.get_species_trait_value('INITIAL_AGENT_NUM', species)
+            center_x, center_y = octagon_centers[species - 1]
+            circle_radius = self.world_width / 6
+
+            # 正規分布を使用して円内にランダムな位置を生成
+            r = np.random.normal(0, circle_radius / 2, initial_agent_num)
+            theta = np.random.uniform(0, 2 * np.pi, initial_agent_num)
+            x = center_x + r * np.cos(theta)
+            y = center_y + r * np.sin(theta)
+
+            end_index = current_index + initial_agent_num
+            self.positions[current_index:end_index, 0] = x
+            self.positions[current_index:end_index, 1] = y
+            self.species[current_index:end_index] = species
+            current_index = end_index
+
+        self.current_agent_count = current_index
+
+        # 初期化データを他のコンポーネントに送信
+        init_data1 = {
+            'positions': self.positions,
+            'agent_species': self.species,
+            'current_agent_count': self.current_agent_count
+        }
+        
+        init_data2 = {
+            'positions': self.positions[:self.current_agent_count],
+            'agent_species': self.species[:self.current_agent_count],
+            'agent_ids': self.agent_ids[:self.current_agent_count],
+            'current_agent_count': self.current_agent_count
+        }
+
+        # 必要に応じて他のコンポーネントにデータを送信
+        self.eco_to_box2d_creatures.put(init_data2)
+        self.eco_to_tf.put(init_data1)
+        self.eco_to_visual_creatures.put(init_data2)
 
     def run(self, shared_memory, running):
         while running.value:
             time.sleep(1)
+            # 今後、エージェント同士の反応処理などをここに追加
             pass
-            

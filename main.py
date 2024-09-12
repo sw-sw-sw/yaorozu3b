@@ -17,7 +17,9 @@ from log import *
 
 def eco_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     ecosystem = Ecosystem(queues)
-    ecosystem.initialize(shared_memory)
+    # ecosystem.initialize(shared_memory)
+    ecosystem.initialize2()
+
     eco_init_done.set()  # Signal that Ecosystem initialization is complete
     initialization_complete['Ecosystem'].set()
     ecosystem.run(shared_memory, running)
@@ -32,8 +34,7 @@ def tf_run(queues, shared_memory, running, initialization_complete, eco_init_don
     
     while running.value:
         timer.start()
-        tensorflow.run()
-        tensorflow.update_parameters()
+        tensorflow.update()
         timer.print_fps(5)
         time.sleep(0.005)
 
@@ -47,20 +48,23 @@ def box2d_run(queues, shared_memory, running, initialization_complete, eco_init_
     
     while running.value:
         timer.start()
-        box2d.run()
+        box2d.update()
         timer.print_fps(5)
         time.sleep(0.005)
 
 def visual_system_run(queues, shared_memory, running, initialization_complete, eco_init_done):
+    timer = Timer("Render ")
     visual_system = VisualSystem(queues)
     eco_init_done.wait() 
     visual_system.initialize()
     initialization_complete['Visual'].set()
     
     while running.value:
-        if not visual_system.run():
-            break
-
+        timer.start()
+        visual_system.update()
+        timer.print_fps(5)
+        time.sleep(0.005)
+        
     visual_system.cleanup()
 
 def run_simulation():

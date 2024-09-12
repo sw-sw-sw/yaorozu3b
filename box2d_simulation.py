@@ -38,28 +38,21 @@ class Box2DSimulation:
         
     def initialize(self):
         init_data = self._eco_to_box2d_creatures.get()
-        self.positions = init_data['positions']
-        self.species = init_data['species']
-        self.agent_species = init_data['species']
+        self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
+        self.agent_species = np.zeros(self.max_agents_num, dtype=np.int32)
         self.current_agent_count = init_data['current_agent_count']
-
+        
+        self.positions[:self.current_agent_count] = init_data['positions']
+        self.agent_species[:self.current_agent_count] = init_data['agent_species']
+        
         for agent_id in range(self.current_agent_count):
             self._create_body(agent_id)
 
 
-
     #------------------- create body  --------------------    
-    
-    def create_bodies(self):
-        for _ in range(self.max_agents_num):
-            creature_info = self._eco_to_box2d_creatures.get()
-            self._create_body(creature_info)
-        self.current_agent_count = self.max_agents_num
-            
-        logger.info(f"Created {self.max_agents_num} bodies in Box2D simulation")
 
     def _create_body(self, agent_id):
-        species = self.species[agent_id]
+        species = self.agent_species[agent_id]
         linear_damping = self.config_manager.get_species_trait_value('DAMPING', species)
         density = self.config_manager.get_species_trait_value('DENSITY', species)
         restitution = self.config_manager.get_species_trait_value('RESTITUTION', species)
@@ -83,22 +76,38 @@ class Box2DSimulation:
         
     # ------------------- remove body --------------------
 
-    def remove_body(self):
-        pass
-
+    def remove_body(self, agent_id):
+        if agent_id in self.bodies:
+            self.world.DestroyBody(self.bodies[agent_id])
+            del self.bodies[agent_id]
     # ------------------Main routine ---------------------
 
-    def run(self):
+    def update(self):
+        self.process_ecosystem_queue()
         self.update_forces()
         self.step()
         self.update_positions()
         self.send_data_to_tf()
         self.send_data_to_visual()
-        
+        # self.apply_random_velocity()
+    
+    def process_ecosystem_queue(self):
+        while not self._eco_to_box2d_creatures.empty():
+            update_data = self._eco_to_box2d_creatures.get()
+            new_count = update_data['current_agent_count']
+            
+            if new_count > self.current_agent_count:
+                logger.info('The number of agents does not match. Perhaps a new agent has been created.')
+            
+            if new_count < self.current_agent_count:
+                logger.info('The number of agents does not match. Perhaps a Perhaps an agent has died..')
+
+            self.positions[:new_count] = update_data['positions']
+            self.agent_species[:new_count] = update_data['species']
         
     def update_forces(self):
         while not self._tf_to_box2d.empty():
-            forces = self._tf_to_box2d.get_nowait()
+            forces = self._tf_to_box2d.get()
             for agent_id, force in zip(self.bodies.keys(), forces):
                 body = self.bodies[agent_id]
                 body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
@@ -115,7 +124,7 @@ class Box2DSimulation:
         data = {
             'positions': self.positions,
             'agent_species': self.agent_species,
-            'count': self.current_agent_count
+            'current_agent_count': self.current_agent_count
         }
         self._box2d_to_tf.put(data)
     

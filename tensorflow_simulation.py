@@ -43,9 +43,11 @@ class TensorFlowSimulation:
 
         # 共有メインプロパティー
         self.tf_positions = tf.Variable(tf.zeros((self.max_agents_num, 2), dtype=tf.float32))
-        self.tf_forces = tf.Variable(tf.zeros((self.max_agents_num, 2), dtype=tf.float32))
-        self.tf_current_agent_count = tf.Variable(0, dtype=tf.int32)  # 初期値を0に変更
         self.tf_agent_species = tf.Variable(tf.zeros([self.max_agents_num], dtype=tf.int32))
+        self.tf_current_agent_count = tf.Variable(0, dtype=tf.int32)  # 初期値を0に変更
+
+        self.tf_forces = tf.Variable(tf.zeros((self.max_agents_num, 2), dtype=tf.float32))
+
 
         # 種別情報の初期化
         self.predator_species = tf.constant([self.config_manager.get_species_trait_value('PREDATOR_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
@@ -104,10 +106,10 @@ class TensorFlowSimulation:
 
         while not self.initialized:
             if not self._eco_to_tf.empty():
-                init_data = self._eco_to_tf.get()
-                self.tf_positions.assign(tf.convert_to_tensor(init_data['positions'], dtype=tf.float32))
-                self.tf_agent_species.assign(tf.convert_to_tensor(init_data['species'], dtype=tf.int32))
-                self.tf_current_agent_count.assign(tf.constant(init_data['current_agent_count'], dtype=tf.int32))
+                data = self._eco_to_tf.get()
+                self.tf_current_agent_count.assign(data['current_agent_count'])
+                self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
+                self.tf_agent_species.assign(tf.convert_to_tensor(data['agent_species'], dtype=tf.int32))
                 self.initialized = True
                 logger.info(f"TensorFlowSimulation Initialized with {self.tf_current_agent_count.numpy()} agents")
             else:
@@ -116,34 +118,29 @@ class TensorFlowSimulation:
         logger.info("TensorFlowSimulation initialized successfully")
     # ------------------- Main routine --------------------
     
-    def run(self):
+    def update(self):
         self.update_property()
-        self.calculate_forces()
-        self.send_forces_to_box2d()
-        self.update_parameters()
+        forces = self.calculate_forces()
+        self.send_forces_to_box2d(forces.numpy())
+        self.update_ui_parameters()
 
     def update_property(self):
-            data = self._box2d_to_tf.get_nowait()
+        if not self._box2d_to_tf.empty():
+            data = self._box2d_to_tf.get() # データーが来てから処理する。
+            self.tf_current_agent_count.assign(data['current_agent_count'])
             self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
             self.tf_agent_species.assign(tf.convert_to_tensor(data['agent_species'], dtype=tf.int32))
-            self.tf_current_agent_count.assign(tf.constant(data['count'], dtype=tf.int32))
-
-    def send_forces_to_box2d(self):
-        forces = self.tf_forces.numpy()
+            
+    def send_forces_to_box2d(self, forces):
         self.queues['tf_to_box2d'].put(forces)
-        
         
     @tf.function
     def calculate_forces(self):
         positions = self.tf_positions[:self.tf_current_agent_count]
         species = self.tf_agent_species[:self.tf_current_agent_count]
-        species_forces = self._species_forces(positions, species)
-        environment_forces = self._environment_forces(positions)
-        total_forces = species_forces + environment_forces
-        limited_forces = self._limit_magnitude(total_forces, self.max_force)
-        # パディングを追加して max_agents_num の長さにする
-        padded_forces = tf.pad(limited_forces, [[0, self.max_agents_num - self.tf_current_agent_count], [0, 0]])
-        self.tf_forces.assign(padded_forces)
+        species_forces = self._limit_magnitude(self._species_forces(positions, species))
+        environment_forces = self._limit_magnitude(self._environment_forces(positions))
+        return species_forces + environment_forces
 
     @profile
     @tf.function
@@ -166,7 +163,7 @@ class TensorFlowSimulation:
         
         # Combine all forces
         forces = center_force + confinement_force + rotation_force
-        return self._limit_magnitude(forces, self.max_force)
+        return self._limit_magnitude(forces)
 
     @tf.function
     def _species_forces(self, positions, species):
@@ -177,7 +174,7 @@ class TensorFlowSimulation:
         forces = (self.separation_weight * separation +
                   self.cohesion_weight * cohesion + predator_prey)
         
-        return self._limit_magnitude(forces, self.max_force)
+        return self._limit_magnitude(forces)
  
     @profile
     @tf.function
@@ -254,12 +251,12 @@ class TensorFlowSimulation:
 
     
     @tf.function
-    def _limit_magnitude(self, vectors, max_magnitude):
+    def _limit_magnitude(self, vectors):
         magnitudes = tf.norm(vectors, axis=1, keepdims=True)
-        scale = tf.minimum(max_magnitude / magnitudes, 1.0)
+        scale = tf.minimum(self.max_force / magnitudes, 1.0)
         return vectors * scale
 
-    def update_parameters(self):
+    def update_ui_parameters(self):
         while not self._ui_to_tensorflow_queue.empty():
             param_name, value = self._ui_to_tensorflow_queue.get()
             print(param_name, value)

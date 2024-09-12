@@ -27,11 +27,12 @@ class Creature(pygame.sprite.Sprite):
         self._shell_point_size = self.dna.get_trait("SHELL_POINT_SIZE")
         self._color = self._get_color_from_dna()
         self._rotate = 0
-        self._rotate_v = self.dna.get_trait("SPEED") * (random.random() - 0.5)
+        self._rotate_v = self.dna.get_trait("SPEED") * (random.random() - 0.5) * 5
         
         self._flash = False
-        self._move_count = 0
-        self._move_cycle = self._initialize_flash_interval()
+        self._flash_count = 0
+        self._flash_cycle = self._initialize_flash_interval()
+        self._flash_radius = min(self._size /2 , 8)
         
         self._horn_pos_in = []
         self._horn_pos_out = []
@@ -56,12 +57,15 @@ class Creature(pygame.sprite.Sprite):
                 self._shell.append(Vector2(x, y))
 
     def _initialize_flash_interval(self):
+        interval = random.randint(100, 200)
         return random.randint(100, 200)  # Random cycle for direction change
     
     def _create_surface(self):
         surface_size = self.get_radius() * 2
         self.image = pygame.Surface((surface_size, surface_size), pygame.SRCALPHA)
         center = Vector2(surface_size / 2, surface_size / 2)
+        
+
         # Draw core
         pygame.draw.circle(self.image, self._color, center, self._size / 2, 1)
         
@@ -78,22 +82,26 @@ class Creature(pygame.sprite.Sprite):
                 pos = center + point
                 pygame.draw.circle(self.image, self._color, pos, self._shell_point_size)
 
+        # Draw flash circle if _flash is True
+        if self._flash:
+            pygame.draw.circle(self.image, (255, 255, 255), center, self._flash_radius)
+        
     def update(self, position: Vector2 = None):
         if position is not None:
             self._pos = position
         
         self._rotate += self._rotate_v
         
-        self._move_count += 1
-        if self._move_count > self._move_cycle:
-            self._move_count = 0
+        self._flash_count += 1
+        if self._flash_count == self._flash_cycle:
             self._flash = True
-
-        # Update the rect position
+            self._flash_count = 0
+        else:
+            self._flash = False
+            
+        self._create_surface()
         self.rect.center = self._pos
-
-        # Rotate the image
-        self.image = pygame.transform.rotate(self._original_image, math.degrees(self._rotate))
+        self.image = pygame.transform.rotate(self.image, math.degrees(self._rotate))
         self.rect = self.image.get_rect(center=self._pos)
         
     def get_radius(self):
