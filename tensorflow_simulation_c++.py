@@ -5,6 +5,8 @@ import numpy as np
 import ctypes
 from log import *
 from queue import Empty
+from predator_prey_module import predator_prey_forces
+
 
 class TensorFlowSimulation:
     def __init__(self, queues, max_agents=None):
@@ -171,11 +173,34 @@ class TensorFlowSimulation:
         distances = self._calculate_distances(positions)
         separation = self._separation(positions, distances)
         cohesion = self._cohesion(positions, distances)
-        predator_prey = self._predator_prey_forces(positions, distances, species)
+        # predator_prey = self._predator_prey_forces(positions, distances, species)
+        predator_prey = tf.py_function(
+            self._predator_prey_forces2,
+            [positions, distances, species],
+            tf.float32
+        )
         forces = (self.separation_weight * separation +
                   self.cohesion_weight * cohesion + predator_prey)
         
         return self._limit_magnitude(forces)
+
+
+    def _predator_prey_forces2(self, positions, distances, species):
+        # C++関数を呼び出す
+        forces = predator_prey_forces(
+            positions.numpy(),
+            distances.numpy(),
+            species.numpy(),
+            self.predator_species.numpy(),
+            self.prey_species.numpy(),
+            self.escape_distance.numpy(),
+            self.chase_distance.numpy(),
+            self.escape_weight.numpy(),
+            self.chase_weight.numpy()
+        )
+        return tf.convert_to_tensor(forces, dtype=tf.float32)
+        # Convert the result back to a TensorFlow tensor
+        
 
     @profile
     @tf.function
@@ -205,13 +230,21 @@ class TensorFlowSimulation:
             tf.nn.l2_normalize(escape_direction, axis=1) * self.escape_weight,
             tf.zeros_like(positions)
         )
+
         chase_force = tf.where(
             tf.reduce_any(chase_mask, axis=1, keepdims=True),
             tf.nn.l2_normalize(chase_direction, axis=1) * self.chase_weight,
             tf.zeros_like(positions)
         )
+
+        # 種ごとの力を合計
         total_force = escape_force + chase_force
 
+        # デバッグ出力
+        # tf.print("Max total force:", tf.reduce_max(tf.abs(total_force)))
+        # tf.print("Mean total force:", tf.reduce_mean(tf.abs(total_force)))
+        # tf.print("Agents with predators:", tf.reduce_sum(tf.cast(tf.reduce_any(escape_mask, axis=1), tf.int32)))
+        # tf.print("Agents with prey:", tf.reduce_sum(tf.cast(tf.reduce_any(chase_mask, axis=1), tf.int32)))
 
         return total_force
 

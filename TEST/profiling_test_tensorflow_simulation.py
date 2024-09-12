@@ -3,18 +3,30 @@ import numpy as np
 from tensorflow_simulation import TensorFlowSimulation
 import time
 from datetime import datetime
+from queue import Queue
 
-def run_profiling_test(num_agents=1000, num_iterations=100):
-    # モックのキューを作成（実際の使用では適切なキューを渡す）
-    mock_queues = {'ui_to_tensorflow': None}
+def run_profiling_test(num_agents=3000, num_iterations=300):
+    # 必要なキューを作成
+    queues = {
+        'ui_to_tensorflow': Queue(),
+        'box2d_to_tf': Queue(),
+        'eco_to_tf': Queue(),
+        'tf_to_box2d': Queue()
+    }
 
-    # TensorFlowSimulationインスタンスの作成
-    tf_sim = TensorFlowSimulation(mock_queues)
+    # TensorFlowSimulationインスタンスの作成（max_agentsを指定）
+    tf_sim = TensorFlowSimulation(queues, max_agents=num_agents)
 
-    # テストデータの生成
-    num_agents = 3000
-    positions = tf.random.uniform((num_agents, 2), minval=0, maxval=tf_sim.world_width)
-    species = tf.random.uniform((num_agents,), minval=1, maxval=9, dtype=tf.int32)
+    # 初期化データの生成とキューへの追加
+    init_data = {
+        'positions': np.random.uniform(0, tf_sim.world_width, (num_agents, 2)).astype(np.float32),
+        'agent_species': np.random.randint(1, 9, num_agents, dtype=np.int32),
+        'current_agent_count': num_agents
+    }
+    queues['eco_to_tf'].put(init_data)
+
+    # initialize()メソッドの呼び出し
+    tf_sim.initialize()
 
     # プロファイリングの有効化
     tf_sim.enable_profiling()
@@ -23,8 +35,16 @@ def run_profiling_test(num_agents=1000, num_iterations=100):
     start_time = time.time()
 
     for _ in range(num_iterations):
-        # 主要なメソッドのテスト
-        forces = tf_sim.calculate_forces(positions, species)
+        # Box2Dからのデータ更新をシミュレート
+        update_data = {
+            'positions': np.random.uniform(0, tf_sim.world_width, (num_agents, 2)).astype(np.float32),
+            'agent_species': np.random.randint(1, 9, num_agents, dtype=np.int32),
+            'current_agent_count': num_agents
+        }
+        queues['box2d_to_tf'].put(update_data)
+
+        # updateメソッドの呼び出し
+        tf_sim.update()
 
     end_time = time.time()
     total_time = end_time - start_time
@@ -53,7 +73,7 @@ def analyze_results(profiling_results, num_iterations):
         min_time = min(times)
         max_time = max(times)
         total_time = sum(times)
-        percentage = (total_time / total_execution_time) * 100  # 修正された行
+        percentage = (total_time / total_execution_time) * 100
 
         result = {
             "function": func_name,
@@ -71,12 +91,14 @@ def write_results_to_file(num_agents, num_iterations, total_time, profiling_resu
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"profiling_results/profiling_results_{timestamp}.txt"
 
-    with open(filename, "a") as f:
+    with open(filename, "w") as f:
         f.write(f"Profiling Test Results - {timestamp}\n")
         f.write(f"Number of agents: {num_agents}\n")
         f.write(f"Number of iterations: {num_iterations}\n")
         f.write(f"Total execution time: {total_time:.2f} seconds\n\n")
-        
+        f.write(f"Total average execution time per iteration: {total_time/num_iterations:.2f} seconds\n\n")
+                
+
         f.write("Profiling Results:\n")
         f.write(profiling_results)
         f.write("\n")
@@ -95,8 +117,4 @@ def write_results_to_file(num_agents, num_iterations, total_time, profiling_resu
     print(f"Results have been written to {filename}")
 
 if __name__ == "__main__":
-    # run_profiling_test()
-
-    # 異なるパラメータでテストを実行する例
-    # run_profiling_test(num_agents=5000, num_iterations=50)
     run_profiling_test(num_agents=3000, num_iterations=200)

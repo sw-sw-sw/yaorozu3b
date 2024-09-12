@@ -15,7 +15,7 @@ SPECIES_COLORS = [
     (128, 128, 128), (255, 128, 0)
 ]
 FORCE_SCALE = 5  # Reduced scale factor for force vector visualization
-MAX_VECTOR_LENGTH = 3  # Maximum length of force vectors in pixels
+MAX_VECTOR_LENGTH = 1  # Maximum length of force vectors in pixels
 
 #Set up timer
 timer = Timer('tensorflow')
@@ -25,12 +25,12 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Predator-Prey Forces Test")
 
 # Initialize TensorFlowSimulation
-mock_queues = {'ui_to_tensorflow': None}
+mock_queues = {'ui_to_tensorflow': None,'box2d_to_tf':None,'eco_to_tf':None}
 tf_sim = TensorFlowSimulation(mock_queues)  # Pass None as we're not using queues
 
 # Initialize agents
 num_species = 8
-agents_per_species = 375
+agents_per_species = 150
 total_agents = num_species * agents_per_species
 
 positions = np.random.rand(total_agents, 2) * np.array([WIDTH, HEIGHT])
@@ -68,7 +68,7 @@ while running:
     timer.print_average_time(1)
     
     # Update velocities and positions
-    velocities += forces_np * 0.01  # Adjust the multiplier to control force strength
+    velocities += forces_np * 0.01   # Adjust the multiplier to control force strength
     velocities *= 0.99  # Add some damping
     positions += velocities * 0.1  # Adjust the multiplier to control speed
 
@@ -80,7 +80,7 @@ while running:
     for pos, force, spec in zip(positions, forces_np, species):
         color = SPECIES_COLORS[spec - 1]
         pygame.draw.circle(screen, color, pos.astype(int), AGENT_RADIUS, 1)
-        draw_force_vector(screen, pos, force, color)
+        draw_force_vector(screen, pos, force * .1, color)
     pygame.display.flip()
     clock.tick(60)
 pygame.quit()
