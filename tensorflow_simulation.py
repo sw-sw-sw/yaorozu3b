@@ -13,7 +13,7 @@ class TensorFlowSimulation:
         self.queues = queues
         self._ui_to_tensorflow_queue = queues['ui_to_tensorflow']
         self._box2d_to_tf = queues['box2d_to_tf']
-        self._eco_to_tf = queues['eco_to_tf']
+        self._eco_to_tf_init = queues['eco_to_tf_init']
 
         self.config_manager = ConfigManager()
         
@@ -45,7 +45,7 @@ class TensorFlowSimulation:
 
         # 共有メインプロパティー
         self.tf_positions = tf.Variable(tf.zeros((self.max_agents_num, 2), dtype=tf.float32))
-        self.tf_agent_species = tf.Variable(tf.zeros([self.max_agents_num], dtype=tf.int32))
+        self.tf_species = tf.Variable(tf.zeros([self.max_agents_num], dtype=tf.int32))
         self.tf_current_agent_count = tf.Variable(0, dtype=tf.int32)  # 初期値を0に変更
 
         self.tf_forces = tf.Variable(tf.zeros((self.max_agents_num, 2), dtype=tf.float32))
@@ -106,11 +106,11 @@ class TensorFlowSimulation:
         logger.info("TensorFlowSimulation is initializing now")
 
         while not self.initialized:
-            if not self._eco_to_tf.empty():
-                data = self._eco_to_tf.get()
+            if not self._eco_to_tf_init.empty():
+                data = self._eco_to_tf_init.get()
                 self.tf_current_agent_count.assign(data['current_agent_count'])
                 self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
-                self.tf_agent_species.assign(tf.convert_to_tensor(data['agent_species'], dtype=tf.int32))
+                self.tf_species.assign(tf.convert_to_tensor(data['species'], dtype=tf.int32))
                 self.initialized = True
                 logger.info(f"TensorFlowSimulation Initialized with {self.tf_current_agent_count.numpy()} agents")
             else:
@@ -130,7 +130,7 @@ class TensorFlowSimulation:
             data = self._box2d_to_tf.get() # データーが来てから処理する。
             self.tf_current_agent_count.assign(data['current_agent_count'])
             self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
-            self.tf_agent_species.assign(tf.convert_to_tensor(data['agent_species'], dtype=tf.int32))
+            self.tf_species.assign(tf.convert_to_tensor(data['species'], dtype=tf.int32))
             
     def send_forces_to_box2d(self, forces):
         self.queues['tf_to_box2d'].put(forces)
@@ -138,7 +138,7 @@ class TensorFlowSimulation:
     @tf.function
     def calculate_forces(self):
         positions = self.tf_positions[:self.tf_current_agent_count]
-        species = self.tf_agent_species[:self.tf_current_agent_count]
+        species = self.tf_species[:self.tf_current_agent_count]
         species_forces = self._limit_magnitude(self._species_forces(positions, species))
         environment_forces = self._limit_magnitude(self._environment_forces(positions))
         return species_forces + environment_forces

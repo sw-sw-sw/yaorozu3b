@@ -6,10 +6,10 @@ from pygame import Vector2
 from config_manager import ConfigManager, DNASpecies
 
 class Creature(pygame.sprite.Sprite):
-    def __init__(self, agent_species: int, position: Vector2):
+    def __init__(self, species: int, position: Vector2):
         super().__init__()
         self.config_manager = ConfigManager()
-        self.dna: DNASpecies = self.config_manager.get_dna_for_species(agent_species)
+        self.dna: DNASpecies = self.config_manager.get_dna_for_species(species)
         self._pos = position
         self._initialize_traits()
         self._initialize_horns()

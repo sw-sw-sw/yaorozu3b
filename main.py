@@ -17,12 +17,17 @@ from log import *
 
 def eco_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     ecosystem = Ecosystem(queues)
-    # ecosystem.initialize(shared_memory)
-    ecosystem.initialize2()
+    timer = Timer("Ecosystem")
+    
+    ecosystem.initialize()
 
     eco_init_done.set()  # Signal that Ecosystem initialization is complete
     initialization_complete['Ecosystem'].set()
-    ecosystem.run(shared_memory, running)
+    
+    while running.value:
+        timer.start()
+        ecosystem.update()
+        timer.print_fps(5)
 
 def tf_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     tensorflow = TensorFlowSimulation(queues)
@@ -77,7 +82,7 @@ def run_simulation():
         'velocities': mp.Array('f', config_manager.get_trait_value('MAX_AGENTS_NUM') * 2),
         'forces': mp.Array('f', config_manager.get_trait_value('MAX_AGENTS_NUM') * 2),
         'agent_ids': mp.Array('i', config_manager.get_trait_value('MAX_AGENTS_NUM')),
-        'agent_species': mp.Array('i', config_manager.get_trait_value('MAX_AGENTS_NUM')),
+        'species': mp.Array('i', config_manager.get_trait_value('MAX_AGENTS_NUM')),
         'current_agent_count': mp.Value('i', 0),
         'tf_time': mp.Value('d', 0.0),
         'box2d_time': mp.Value('d', 0.0),
@@ -100,12 +105,13 @@ def run_simulation():
     queues = {
         'eco_to_box2d': mp.Queue(),
         'eco_to_visual': mp.Queue(),
-        'eco_to_tf': mp.Queue(),
-        'eco_to_visual_creatures': mp.Queue(),
-        'eco_to_box2d_creatures': mp.Queue(),
+        'eco_to_tf_init': mp.Queue(),
+        'eco_to_visual_init': mp.Queue(),
+        'eco_to_box2d_init': mp.Queue(),
         'box2d_to_tf': mp.Queue(maxsize=1),
+        'box2d_to_eco': mp.Queue(maxsize=1),
         'tf_to_box2d': mp.Queue(maxsize=1),
-        'box2d_to_visual_render': mp.Queue(maxsize=100),
+        'eco_to_visual_render': mp.Queue(maxsize=100),
         'ui_to_tensorflow': mp.Queue() 
     }
 

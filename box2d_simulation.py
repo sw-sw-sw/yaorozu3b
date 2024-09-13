@@ -11,16 +11,15 @@ from queue import Empty
 class Box2DSimulation:
     def __init__(self, queues):
         self.queues = queues  # この行を追加
-
         self.world = b2World(gravity=(0, 0), doSleep=True)
         self.bodies = {}
-        
         #queues
-        self._box2d_to_visual_render = queues['box2d_to_visual_render']
-        self._eco_to_box2d_creatures = queues['eco_to_box2d_creatures']
+        self._eco_to_box2d_init = queues['eco_to_box2d_init']
+        self._eco_to_box2d = queues['eco_to_box2d']
         self._tf_to_box2d  = queues['tf_to_box2d']
         self._box2d_to_tf = queues['box2d_to_tf']
-        
+        self._box2d_to_eco = queues['box2d_to_eco'] 
+
         # ConfigManagerから値を取得してプロパティとして設定
         self.config_manager = ConfigManager()
         self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
@@ -29,7 +28,9 @@ class Box2DSimulation:
         self.dt = self.config_manager.get_trait_value('DT') 
 
         self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
-        self.agent_species = np.zeros(self.max_agents_num, dtype=np.int32)
+        self.species = np.zeros(self.max_agents_num, dtype=np.int32)
+        self.agent_ids = np.zeros(self.max_agents_num, dtype=np.int32)
+
         self.current_agent_count = 0
 
 
@@ -37,22 +38,22 @@ class Box2DSimulation:
   
         
     def initialize(self):
-        init_data = self._eco_to_box2d_creatures.get()
+        init_data = self._eco_to_box2d_init.get()
         self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
-        self.agent_species = np.zeros(self.max_agents_num, dtype=np.int32)
+        self.species = np.zeros(self.max_agents_num, dtype=np.int32)
+        self.agent_ids = np.arange(self.current_agent_count)
         self.current_agent_count = init_data['current_agent_count']
         
         self.positions[:self.current_agent_count] = init_data['positions']
-        self.agent_species[:self.current_agent_count] = init_data['agent_species']
+        self.species[:self.current_agent_count] = init_data['species']
         
-        for agent_id in range(self.current_agent_count):
+        for agent_id in self.agent_ids:
             self._create_body(agent_id)
-
 
     #------------------- create body  --------------------    
 
     def _create_body(self, agent_id):
-        species = self.agent_species[agent_id]
+        species = self.species[agent_id]
         linear_damping = self.config_manager.get_species_trait_value('DAMPING', species)
         density = self.config_manager.get_species_trait_value('DENSITY', species)
         restitution = self.config_manager.get_species_trait_value('RESTITUTION', species)
@@ -86,55 +87,78 @@ class Box2DSimulation:
         self.process_ecosystem_queue()
         self.update_forces()
         self.step()
-        self.update_positions()
+        self.update_property()
         self.send_data_to_tf()
-        self.send_data_to_visual()
+        self.send_data_to_eco()
         # self.apply_random_velocity()
     
     def process_ecosystem_queue(self):
-        while not self._eco_to_box2d_creatures.empty():
-            update_data = self._eco_to_box2d_creatures.get()
-            new_count = update_data['current_agent_count']
-            
-            if new_count > self.current_agent_count:
-                logger.info('The number of agents does not match. Perhaps a new agent has been created.')
-            
-            if new_count < self.current_agent_count:
-                logger.info('The number of agents does not match. Perhaps a Perhaps an agent has died..')
+        while not self._eco_to_box2d.empty():
+            try:
+                update_data = self._eco_to_box2d.get_nowait()
+                action = update_data.get('action')
+                
+                if action == 'add':
+                    self._handle_agent_added(update_data)
+                elif action == 'remove':
+                    self._handle_agent_removed(update_data)
+                else:
+                    # 'action'キーがない場合は、全体の更新データとして処理
+                    self._handle_full_update(update_data)
+            except Empty:
+                break
 
-            self.positions[:new_count] = update_data['positions']
-            self.agent_species[:new_count] = update_data['species']
+    def _handle_agent_added(self, data):
+        agent_id = data['agent_id']
+        species = data['species']
+        position = data['position']
+        self.current_agent_count += 1
+        self.positions[agent_id] = position
+        self.species[agent_id] = species
+        self.agent_ids.append(agent_id)
         
+        self._create_body(agent_id)
+        logger.info(f"Agent {agent_id} added to Box2D. Total agents: {self.current_agent_count}")
+
+    def _handle_agent_removed(self, data):
+        agent_id = data['agent_id']
+        if agent_id in self.bodies:
+            self.remove_body(agent_id)
+            self.agent_ids.remove(agent_id)
+            self.current_agent_count -= 1
+            logger.info(f"Agent {agent_id} removed from Box2D. Total agents: {self.current_agent_count}")
+        else:
+            logger.warning(f"Attempted to remove non-existent agent {agent_id} from Box2D")
+
     def update_forces(self):
         while not self._tf_to_box2d.empty():
             forces = self._tf_to_box2d.get()
             for agent_id, force in zip(self.bodies.keys(), forces):
                 body = self.bodies[agent_id]
                 body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
+                
     
     def step(self):
         self.world.Step(self.dt, 6, 2)
-        # self.apply_random_velocity() # random move
 
-    def update_positions(self):
+    def update_property(self):
         for agent_id, body in self.bodies.items():
             self.positions[agent_id] = body.position.x, body.position.y
-
+            
     def send_data_to_tf(self):
         data = {
             'positions': self.positions,
-            'agent_species': self.agent_species,
+            'species': self.species,
             'current_agent_count': self.current_agent_count
         }
         self._box2d_to_tf.put(data)
     
-    def send_data_to_visual(self):
-        visual_data = {
+    def send_data_to_eco(self):
+        eco_data = {
             'positions': self.positions,
-            'agent_ids': list(self.bodies.keys()),
             'current_agent_count': self.current_agent_count
         }
-        self._box2d_to_visual_render.put(visual_data)
+        self._box2d_to_eco.put(eco_data)
             
     # ----------------- sub method ----------------------
     
