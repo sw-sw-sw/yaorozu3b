@@ -1,14 +1,15 @@
 ```mermaid
 classDiagram
     class AgentsData {
-        +send_data_to_tf_initialize()
-        +send_data_to_box2d_initialize()
-        +send_data_to_visual_initialize()
+        +update_positions(positions: np.ndarray)
+        +full_update(full_data: Dict)
     }
 
     class Ecosystem {
         +initialize()
         +update()
+        -process_box2d_queue()
+        -send_data_to_visual()
     }
 
     class TensorFlowSimulation {
@@ -22,7 +23,7 @@ classDiagram
         -process_ecosystem_queue()
         -update_forces()
         -send_data_to_tf()
-        -send_data_to_visual()
+        -send_data_to_ecosystem()
     }
 
     class VisualSystem {
@@ -31,12 +32,10 @@ classDiagram
         -process_queue()
     }
 
-    AgentsData ..> TensorFlowSimulation : eco_to_tf_init
-    AgentsData ..> Box2DSimulation : eco_to_box2d_init
-    AgentsData ..> VisualSystem : eco_to_visual_init
     Ecosystem --> Box2DSimulation : eco_to_box2d
     Ecosystem --> VisualSystem : eco_to_visual
     TensorFlowSimulation --> Box2DSimulation : tf_to_box2d
     Box2DSimulation --> TensorFlowSimulation : box2d_to_tf
-    Box2DSimulation --> VisualSystem : box2d_to_visual_render
+    Box2DSimulation --> Ecosystem : box2d_to_eco
+    Ecosystem --> AgentsData : update_data
 ```
