@@ -105,8 +105,8 @@ class AgentsData:
 
     def send_data_to_tf_initialize(self):
         data = {
-            'positions': self.positions[:self.current_agent_count],
-            'species': self.species[:self.current_agent_count],
+            'positions': self.positions,
+            'species': self.species,
             'current_agent_count': self.current_agent_count
         }
         self._eco_to_tf_init.put(data)
