@@ -2,7 +2,7 @@ from Box2D import b2World, b2Vec2, b2BodyDef, b2_dynamicBody, b2CircleShape
 import numpy as np
 import logging
 import random
-import time
+import time, logging
 from config_manager import ConfigManager
 from log import *
 from queue import Empty
@@ -21,6 +21,8 @@ class Box2DSimulation:
         self._box2d_to_tf = queues['box2d_to_tf']
         self._box2d_to_eco = queues['box2d_to_eco'] 
 
+        # self._eco_to_visual_render = queues['eco_to_visual_render']
+
         # ConfigManager setup
         self.config_manager = ConfigManager()
         self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
@@ -32,6 +34,8 @@ class Box2DSimulation:
         self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
         self.species = np.zeros(self.max_agents_num, dtype=np.int32)
         self.agent_ids = np.zeros(self.max_agents_num, dtype=np.int32)
+        self.forces = np.zeros((self.max_agents_num, 2), dtype=np.float32)
+
         self.current_agent_count = 0
 
         self.last_random_velocity_time = time.time()
@@ -77,6 +81,7 @@ class Box2DSimulation:
         self.update_positions()
         self.send_data_to_tf()
         self.send_data_to_eco()
+        # self.send_data_to_visual_render()
         # self.apply_random_velocity()
     
     def process_ecosystem_queue(self):
@@ -85,12 +90,21 @@ class Box2DSimulation:
                 update_data = self._eco_to_box2d.get_nowait()
                 action = update_data.get('action')
                 
+                start_time = time.time()
                 if action == 'add':
                     self._handle_agent_added(update_data)
                 elif action == 'remove':
                     self._handle_agent_removed(update_data)
-            except Empty:
-                break
+                else:
+                    logging.warning(f"Unknown action received: {action}")
+                
+                end_time = time.time()
+                processing_time = end_time - start_time
+                if processing_time > 0.001:  # 10ミリ秒以上かかった処理をログに記録
+                    logging.warning(f"Long operation detected: {action} took {processing_time:.4f} seconds")
+            
+            except Exception as e:
+                logging.error(f"Error processing ecosystem queue: {e}")
 
     def _handle_agent_added(self, data):
         agent_id = data['agent_id']
@@ -102,8 +116,7 @@ class Box2DSimulation:
         self.positions[index] = position
         self.species[index] = species
         self.agent_ids[index] = agent_id
-        logger.info(f"Agent {agent_id} added to Box2D. Total agents: {self.current_agent_count}")
-
+        
     def _handle_agent_removed(self, data):
         agent_id = data['agent_id']
         if agent_id in self.bodies:
@@ -119,15 +132,16 @@ class Box2DSimulation:
             logger.warning(f"Attempted to remove non-existent agent {agent_id} from Box2D")
 
     def update_forces(self):
-        try:
-            forces = self._tf_to_box2d.get_nowait()
-            for i, agent_id in enumerate(self.agent_ids[:self.current_agent_count]):
-                if agent_id in self.bodies:
-                    body = self.bodies[agent_id]
-                    force = forces[i]
-                    body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
-        except Empty:
-            pass
+        while not self._tf_to_box2d.empty():
+            forces = self._tf_to_box2d.get()
+            if len(forces) != self.current_agent_count:
+                # print(f"Warning: Agent count mismatch in Box2D. Expected {self.current_agent_count}, got {len(forces)}. Skipping update.")
+                forces = self.forces
+                
+            for agent_id, force in zip(self.bodies.keys(), forces):
+                body = self.bodies[agent_id]
+                body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
+                self.forces = forces
 
     def step(self):
         self.world.Step(self.dt, 6, 2)
@@ -138,7 +152,6 @@ class Box2DSimulation:
                 body = self.bodies[agent_id]
                 self.positions[i] = body.position.x, body.position.y
 
-# self.positionsはスライスせずに全データーを送ります。
     def send_data_to_tf(self):
         data = {
             'positions': self.positions.tolist(),  # numpy配列をリストに変換
@@ -147,10 +160,19 @@ class Box2DSimulation:
         }
         self._box2d_to_tf.put(data)
     
+    def send_data_to_visual_render(self):
+        visual_data = {
+            'positions': self.positions[:self.current_agent_count],
+            'current_agent_count': self.current_agent_count,
+            'agent_ids': self.agent_ids,
+        }
+        self._eco_to_visual_render.put(visual_data)
+    
     def send_data_to_eco(self):
         eco_data = {
             'positions': self.positions[:self.current_agent_count],
-            'current_agent_count': self.current_agent_count
+            'current_agent_count': self.current_agent_count,
+            'agent_ids': self.agent_ids,
         }
         self._box2d_to_eco.put(eco_data)
 

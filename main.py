@@ -42,7 +42,7 @@ def tf_run(queues, shared_memory, running, initialization_complete, eco_init_don
         timer.start()
         tensorflow.update()
         timer.print_fps(5)
-        time.sleep(0.005)
+        time.sleep(0.001)
 
 def box2d_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     box2d = Box2DSimulation(queues)
@@ -56,7 +56,7 @@ def box2d_run(queues, shared_memory, running, initialization_complete, eco_init_
         timer.start()
         box2d.update()
         timer.print_fps(5)
-        time.sleep(0.005)
+        time.sleep(0.001)
 
 def visual_system_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     timer = Timer("Render ")
@@ -69,7 +69,7 @@ def visual_system_run(queues, shared_memory, running, initialization_complete, e
         timer.start()
         visual_system.update()
         timer.print_fps(5)
-        time.sleep(0.005)
+        time.sleep(0.001)
         
     visual_system.cleanup()
 
@@ -104,16 +104,17 @@ def run_simulation():
 
     running = mp.Value('b', True)
     queues = {
+        'eco_to_box2d_init': mp.Queue(),
         'eco_to_box2d': mp.Queue(),
-        'eco_to_visual': mp.Queue(),
         'eco_to_tf_init': mp.Queue(),
         'eco_to_visual_init': mp.Queue(),
-        'eco_to_box2d_init': mp.Queue(),
+        'eco_to_visual': mp.Queue(),
+        'eco_to_visual_render': mp.Queue(maxsize=1),
+        'eco_to_tf': mp.Queue(maxsize=1),
         'box2d_to_tf': mp.Queue(maxsize=1),
         'box2d_to_eco': mp.Queue(maxsize=1),
         'tf_to_box2d': mp.Queue(maxsize=1),
-        'eco_to_visual_render': mp.Queue(maxsize=100),
-        'ui_to_tensorflow': mp.Queue() 
+        'ui_to_tensorflow': mp.Queue()
     }
 
     initialization_complete = {

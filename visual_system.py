@@ -69,7 +69,7 @@ class VisualSystem:
         self.update_creatures()
         self.draw()
         
-
+        
     def process_queue(self):
         while True:
             try:
@@ -94,7 +94,8 @@ class VisualSystem:
                 if agent_id in self.creatures:
                     self.creatures[agent_id].update(pygame.Vector2(positions[i][0], positions[i][1]))
         except Empty:
-            pass          
+            pass
+                    
     def draw(self):
         self.world_surface.fill(self.background_color)
         self.all_sprites.draw(self.world_surface)

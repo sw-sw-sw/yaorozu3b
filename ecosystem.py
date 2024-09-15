@@ -3,6 +3,7 @@ import numpy as np
 from config_manager import ConfigManager
 from agents_data import AgentsData
 import random, time
+from log import *
 
 class Ecosystem:
     def __init__(self, queues):
@@ -10,8 +11,10 @@ class Ecosystem:
         self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
         self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
         self.world_height = self.config_manager.get_trait_value('WORLD_HEIGHT')
-        self.ad = AgentsData(self.max_agents_num, queues)
-
+        self.ad = AgentsData(self.max_agents_num, queues)        # タイマー関連の設定
+    
+        self.count = 0
+        
     def initialize(self):
         octagon_radius = self.world_width / 4
         octagon_centers = []
@@ -41,17 +44,14 @@ class Ecosystem:
         self.ad.send_data_to_visual_initialize()
 
     def update(self):
-        if self.ad.update_from_box2d():
-            self.ad.send_data_to_visual()
-        
-        # if random.random() < 0.01:  # 5%の確率で追加
+        # transfer box2data and update from box2d data
+        self.ad.update()
+
+        # self.count += 1
+        # if self.count == 300:
+        #     self.count = 0
         #     self.add_random_agent()
-        # if random.random() < 0.05:  # 3%の確率で削除
-        #     self.remove_random_agent()
-        # time.sleep(0.1)
-        
-    # for test of add_agent()
-    
+            
     def add_random_agent(self):
         #既存のエージェントが増殖する。
         try:
@@ -59,8 +59,14 @@ class Ecosystem:
             if len(agent_ids) > 0:
                 agent_id = random.choice(agent_ids)
                 species = self.ad.species[agent_id]
-                position = self.ad.positions[agent_id]
+                position = self.ad.positions[agent_id] + np.array([1,1])
                 new_agent_id = self.ad.add_agent(species, position)
+                new_agent_id = self.ad.add_agent(species, position)
+                new_agent_id = self.ad.add_agent(species, position)
+                new_agent_id = self.ad.add_agent(species, position)
+                new_agent_id = self.ad.add_agent(species, position)
+                new_agent_id = self.ad.add_agent(species, position)
+
                 if new_agent_id is not None:
                     print(f"Added new agent with ID: {new_agent_id}")
                 else:
@@ -69,8 +75,6 @@ class Ecosystem:
                 print("No agents available for reproduction")
         except Exception as e:
             print(f"Failed to add agent: {e}")
-    
-    # for test of remove_agent() 
     
     def remove_random_agent(self):
         agent_ids = self.ad.available_agent_ids()

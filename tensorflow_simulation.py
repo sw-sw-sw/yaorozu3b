@@ -13,7 +13,7 @@ class TensorFlowSimulation:
         self._ui_to_tensorflow_queue = queues['ui_to_tensorflow']
         self._box2d_to_tf = queues['box2d_to_tf']
         self._eco_to_tf_init = queues['eco_to_tf_init']
-
+        self._eco_to_tf = queues['eco_to_tf']
         self.config_manager = ConfigManager()
         
         # ConfigManagerから値を取得してプロパティとして設定

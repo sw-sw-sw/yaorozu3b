@@ -1,5 +1,6 @@
 import numpy as np
 from queue import Empty
+from log import *
 
 class AgentsData:
     def __init__(self, max_agents_num, queue_dict):
@@ -16,9 +17,10 @@ class AgentsData:
         self._eco_to_box2d_init = queue_dict['eco_to_box2d_init']
         self._eco_to_visual_init = queue_dict['eco_to_visual_init']
         self._eco_to_tf_init = queue_dict['eco_to_tf_init']
+        self._eco_to_tf = queue_dict['eco_to_tf']  # New queue for TensorFlow
         self._box2d_to_eco = queue_dict['box2d_to_eco']
         self._eco_to_visual_render = queue_dict['eco_to_visual_render']
-
+        
     def _add_agent_internal(self, species, position):
         if self.current_agent_count < self.max_agents_num:
             if self.available_ids:
@@ -52,10 +54,12 @@ class AgentsData:
             'action': 'add',
             'agent_id': agent_id,
             'species': species,
-            'position': position,
+            'position': position.tolist() if isinstance(position, np.ndarray) else list(position),
         }
         self._eco_to_box2d.put(add_data)
         self._eco_to_visual.put(add_data)
+        # self._eco_to_tf.put(add_data)  # Send to TensorFlow
+
 
     def remove_agent(self, agent_id):
         index = np.where(self.agent_ids[:self.current_agent_count] == agent_id)[0]
@@ -85,24 +89,27 @@ class AgentsData:
         self._eco_to_visual.put(remove_data)
         self._eco_to_box2d.put(remove_data)
 
-    def update_from_box2d(self):
+    def update(self):
         try:
-            data = self._box2d_to_eco.get_nowait()
-            self.positions[:self.current_agent_count] = data['positions']
-            self.current_agent_count = data['current_agent_count']
-            return True
-        except Empty:
-            return False
+            if not self._box2d_to_eco.empty():
+                box2d_data = self._box2d_to_eco.get_nowait()
+                self.send_data_to_visual(box2d_data)
 
-    def send_data_to_visual(self):
-        visual_data = {
-            'positions': self.positions[:self.current_agent_count],
-            'agent_ids': self.agent_ids[:self.current_agent_count],
-            'current_agent_count': self.current_agent_count
-        }
+                if len(box2d_data['positions']) == self.current_agent_count:
+                    self.positions[:self.current_agent_count] = box2d_data['positions']
+                    # self.current_agent_count = box2d_data['current_agent_count']
+                else:
+                    logging.warning(f"Agent count mismatch. Box2D: {len(box2d_data['positions'])}, AgentsData: {self.current_agent_count}")
+
+        except Exception as e:
+            logging.error(f"Error in Ecosystem update: {e}")
+
+
+    def send_data_to_visual(self, visual_data):
         self._eco_to_visual_render.put(visual_data)
-        return visual_data
+   
     
+
     def send_data_to_tf_initialize(self):
         data = {
             'positions': self.positions,  # numpy配列をリストに変換
@@ -111,13 +118,6 @@ class AgentsData:
         }
         self._eco_to_tf_init.put(data)
         
-    # def send_data_to_tf_initialize(self):
-    #     data = {
-    #         'positions': self.positions.tolist(),  # numpy配列をリストに変換
-    #         'species': self.species.tolist(),      # numpy配列をリストに変換
-    #         'current_agent_count': int(self.current_agent_count)  # intに変換
-    #     }
-    #     self._eco_to_tf_init.put(data)
 
     def send_data_to_box2d_initialize(self):
         data = {
@@ -128,6 +128,7 @@ class AgentsData:
         }
         self._eco_to_box2d_init.put(data)
 
+
     def send_data_to_visual_initialize(self):
         data = {
             'positions': self.positions[:self.current_agent_count],
@@ -137,5 +138,7 @@ class AgentsData:
         }
         self._eco_to_visual_init.put(data)
 
+        
     def available_agent_ids(self):
         return self.agent_ids[:self.current_agent_count]
+    
