@@ -1,0 +1,268 @@
+
+classDiagram
+    class AgentsData {
+        -max_agents_num: int
+        -positions: np.ndarray
+        -species: np.ndarray
+        -agent_ids: np.ndarray
+        -current_agent_count: int
+        -next_id: int
+        -available_ids: list
+        -_eco_to_box2d: Queue
+        -_eco_to_visual: Queue
+        -_eco_to_box2d_init: Queue
+        -_eco_to_visual_init: Queue
+        -_eco_to_tf_init: Queue
+        -_box2d_to_eco: Queue
+        -_eco_to_visual_render: Queue
+        +__init__(max_agents_num: int, queue_dict: dict)
+        -_add_agent_internal(species: int, position: tuple) : int
+        +add_agent(species: int, position: tuple) : int
+        +add_agent_no_notify(species: int, position: tuple) : int
+        -_notify_agent_add(agent_id: int, species: int, position: tuple)
+        +remove_agent(agent_id: int)
+        -_notify_agent_removed(agent_id: int)
+        +update_from_box2d() : bool
+        +send_data_to_visual()
+        +send_data_to_tf_initialize()
+        +send_data_to_box2d_initialize()
+        +send_data_to_visual_initialize()
+        +available_agent_ids() : list
+    }
+
+    class Box2DSimulation {
+        -world: b2World
+        -bodies: dict
+        -_eco_to_box2d_init: Queue
+        -_eco_to_box2d: Queue
+        -_tf_to_box2d: Queue
+        -_box2d_to_tf: Queue
+        -_box2d_to_eco: Queue
+        -max_agents_num: int
+        -random_velocity_interval: float
+        -random_speed: float
+        -dt: float
+        -positions: np.ndarray
+        -species: np.ndarray
+        -agent_ids: np.ndarray
+        -current_agent_count: int
+        -last_random_velocity_time: float
+        +__init__(queues: dict)
+        +initialize()
+        -_create_body(agent_id: int)
+        +remove_body(agent_id: int)
+        +update()
+        -process_ecosystem_queue()
+        -_handle_agent_added(data: dict)
+        -_handle_agent_removed(data: dict)
+        -update_forces()
+        +step()
+        -update_property()
+        +send_data_to_tf()
+        +send_data_to_eco()
+    }
+
+    class ConfigManager {
+        -file_path: str
+        -config: dict
+        -species_dna: dict
+        +__init__(file_path: str)
+        -load_config()
+        -_parse_value(value: str) : Any
+        +get_trait_value(trait: str) : Any
+        +get_species_trait_value(trait: str, species: int) : Any
+        +get_dna_for_species(species: int) : DNASpecies
+        +get_trait_range(trait: str) : tuple
+        +display_environment_variables()
+        +display_species_dna()
+        +get_trait_value_as_tuple(trait: str) : tuple
+    }
+
+    class DNASpecies {
+        -species_id: int
+        -traits: dict
+        +__init__(species_id: int, traits: dict)
+        +get_trait(trait_name: str) : Any
+    }
+
+    class Creature {
+        -_pos: Vector2
+        -_size: float
+        -_horn_num: int
+        -_horn_length: float
+        -_horn_width: float
+        -_shell_size: float
+        -_shell_point_size: float
+        -_color: Color
+        -_rotate: float
+        -_rotate_v: float
+        -_flash: bool
+        -_flash_count: int
+        -_flash_cycle: int
+        -_flash_radius: float
+        -_horn_pos_in: list
+        -_horn_pos_out: list
+        -_shell: list
+        -_shell_point_num: int
+        +__init__(species: int, position: Vector2)
+        -_initialize_traits()
+        -_initialize_horns()
+        -_initialize_shell()
+        -_initialize_flash_interval() : int
+        -_create_surface()
+        +update(position: Vector2)
+        +get_radius() : float
+        -_get_color_from_dna() : Color
+    }
+
+    class Ecosystem {
+        -max_agents_num: int
+        -world_width: int
+        -world_height: int
+        -ad: AgentsData
+        +__init__(queues: dict)
+        +initialize()
+        +update()
+        +add_random_agent()
+        +remove_random_agent()
+    }
+
+    class ParameterControlUI {
+        -root: Tk
+        -update_callback: function
+        -config_manager: ConfigManager
+        -sliders: dict
+        -value_labels: dict
+        -parameters: list
+        -params_folder: str
+        -saved_files: list
+        -status_label: Label
+        +__init__(root: Tk, update_callback: function, config_manager: ConfigManager)
+        -ensure_params_folder()
+        -create_sliders()
+        -create_save_load_widgets()
+        -update_parameter(param_name: str, value: float)
+        -update_value_label(param_name: str, value: float)
+        +set_initial_values(values: dict)
+        -save_settings()
+        -load_saved_files_list()
+        -load_selected_settings()
+        -focus_save_button(event: Event)
+    }
+
+    class TensorFlowSimulation {
+        -_ui_to_tensorflow_queue: Queue
+        -_box2d_to_tf: Queue
+        -_eco_to_tf_init: Queue
+        -world_width: int
+        -world_height: int
+        -max_agents_num: int
+        -world_size: Tensor
+        -world_center: Tensor
+        -world_radius: Tensor
+        -max_force: Variable
+        -separation_distance: Variable
+        -cohesion_distance: Variable
+        -separation_weight: Variable
+        -cohesion_weight: Variable
+        -center_attraction_weight: Variable
+        -rotation_strength: Variable
+        -confinement_weight: Variable
+        -escape_distance: Variable
+        -escape_weight: Variable
+        -chase_distance: Variable
+        -chase_weight: Variable
+        -tf_positions: Variable
+        -tf_species: Variable
+        -tf_current_agent_count: Variable
+        -tf_forces: Variable
+        -predator_species: Tensor
+        -prey_species: Tensor
+        -profiling_enabled: bool
+        -profiling_results: dict
+        -initialized: bool
+        +__init__(queues: dict, max_agents: int)
+        +enable_profiling()
+        +disable_profiling()
+        +get_profiling_results() : str
+        +clear_profiling_results()
+        +initialize()
+        +update()
+        -update_property()
+        -send_forces_to_box2d(forces: np.ndarray)
+        +calculate_forces() : Tensor
+        -_environment_forces(positions: Tensor) : Tensor
+        -_species_forces(positions: Tensor, species: Tensor) : Tensor
+        -_predator_prey_forces(positions: Tensor, distances: Tensor, species: Tensor) : Tensor
+        -_separation(positions: Tensor, distances: Tensor) : Tensor
+        -_cohesion(positions: Tensor, distances: Tensor) : Tensor
+        -_calculate_center_distances(positions: Tensor) : tuple
+        -_calculate_distances(positions: Tensor) : Tensor
+        -_limit_magnitude(vectors: Tensor) : Tensor
+        -update_ui_parameters()
+    }
+
+    class Timer {
+        -name: str
+        -frame_count: int
+        -start_time: float
+        -fps_update_interval: float
+        -last_time: float
+        -time_value: float
+        -b_print: bool
+        -total_time: float
+        +__init__(name: str, fps_update_interval: float)
+        +start()
+        -_calculate_fps() : float
+        +sleep_time(other_time_value: float)
+        +calculate_time() : float
+        +print_fps(interval_time: float)
+        +print_average_time(interval_time: float)
+    }
+
+    class VisualSystem {
+        -world_width: int
+        -world_height: int
+        -background_color: tuple
+        -render_fps: int
+        -max_agents_num: int
+        -_eco_to_visual_render: Queue
+        -_eco_to_visual_init: Queue
+        -_eco_to_visual: Queue
+        -screen: Surface
+        -creatures: dict
+        -all_sprites: Group
+        -world_surface: Surface
+        -rotation_enabled: bool
+        -clock: Clock
+        -current_agent_count: int
+        +__init__(queues: dict)
+        +initialize()
+        -create_creature(agent_id: int, species: int, x: float, y: float)
+        -remove_creature(agent_id: int)
+        +update()
+        -process_queue()
+        -update_creatures(render_data: dict)
+        -draw()
+        -_handle_agent_added(data: dict)
+        -_handle_agent_removed(data: dict)
+        +cleanup()
+    }
+
+    AgentsData ..> ConfigManager : uses
+    Box2DSimulation ..> ConfigManager : uses
+    Creature ..> ConfigManager : uses
+    Ecosystem ..> ConfigManager : uses
+    Ecosystem *-- AgentsData : has
+    ParameterControlUI ..> ConfigManager : uses
+    TensorFlowSimulation ..> ConfigManager : uses
+    VisualSystem ..> ConfigManager : uses
+    VisualSystem *-- Creature : manages
+    ConfigManager *-- DNASpecies : contains
+
+    Ecosystem --> Box2DSimulation : communicates via queues
+    Ecosystem --> TensorFlowSimulation : communicates via queues
+    Ecosystem --> VisualSystem : communicates via queues
+    Box2DSimulation --> TensorFlowSimulation : communicates via queues
+    TensorFlowSimulation --> Box2DSimulation : communicates via queues
+    ParameterControlUI --> TensorFlowSimulation : updates parameters

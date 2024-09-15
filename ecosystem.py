@@ -34,15 +34,15 @@ class Ecosystem:
             x = center_x + r * np.cos(theta)
             y = center_y + r * np.sin(theta)
             for i in range(initial_agent_num):
-                self.ad.add_agent(species, (float(x[i]), float(y[i])))
+                self.ad.add_agent_no_notify(species, (float(x[i]), float(y[i])))
                 
         self.ad.send_data_to_box2d_initialize()
         self.ad.send_data_to_tf_initialize()
         self.ad.send_data_to_visual_initialize()
 
     def update(self):
-        self.ad.update_from_box2d()
-        self.ad.send_data_to_visual()
+        if self.ad.update_from_box2d():
+            self.ad.send_data_to_visual()
         
         # if random.random() < 0.01:  # 5%の確率で追加
         #     self.add_random_agent()
@@ -55,17 +55,28 @@ class Ecosystem:
     def add_random_agent(self):
         #既存のエージェントが増殖する。
         try:
-            agent_id = random.choice(self.ad.available_agent_ids())
-            species = self.ad.species[agent_id]
-            position =self.ad.positions[agent_id]
-            self.ad.add_agent(species, position)
-        except ValueError as e:
+            agent_ids = self.ad.available_agent_ids()
+            if len(agent_ids) > 0:
+                agent_id = random.choice(agent_ids)
+                species = self.ad.species[agent_id]
+                position = self.ad.positions[agent_id]
+                new_agent_id = self.ad.add_agent(species, position)
+                if new_agent_id is not None:
+                    print(f"Added new agent with ID: {new_agent_id}")
+                else:
+                    print("Failed to add new agent: maximum capacity reached")
+            else:
+                print("No agents available for reproduction")
+        except Exception as e:
             print(f"Failed to add agent: {e}")
     
     # for test of remove_agent() 
     
     def remove_random_agent(self):
-        if self.ad.current_agent_count > 0:
-            # ランダムなエージェントIDを選択
-            agent_id = random.choice(self.ad.available_agent_ids())
+        agent_ids = self.ad.available_agent_ids()
+        if len(agent_ids) > 0:
+            agent_id = random.choice(agent_ids)
             self.ad.remove_agent(agent_id)
+            print(f"Removed agent with ID: {agent_id}")
+        else:
+            print("No agents available for removal")

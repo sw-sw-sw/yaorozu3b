@@ -12,7 +12,7 @@ def run_performance_test(num_agents=1000, num_iterations=100):
     queues = {
         'ui_to_tensorflow': Queue(),
         'box2d_to_tf': Queue(),
-        'eco_to_tf': Queue(),
+        'eco_to_tf_init': Queue(),
         'tf_to_box2d': Queue()
     }
 
@@ -22,10 +22,10 @@ def run_performance_test(num_agents=1000, num_iterations=100):
     # 初期化データの生成とキューへの追加
     init_data = {
         'positions': np.random.uniform(0, tf_sim.world_width, (num_agents, 2)).astype(np.float32),
-        'agent_species': np.random.randint(1, 9, num_agents, dtype=np.int32),
+        'species': np.random.randint(1, 9, num_agents, dtype=np.int32),
         'current_agent_count': num_agents
     }
-    queues['eco_to_tf'].put(init_data)
+    queues['eco_to_tf_init'].put(init_data)
 
     # initialize()メソッドの呼び出し
     tf_sim.initialize()
@@ -36,7 +36,7 @@ def run_performance_test(num_agents=1000, num_iterations=100):
         # Box2Dからのデータ更新をシミュレート
         update_data = {
             'positions': np.random.uniform(0, tf_sim.world_width, (num_agents, 2)).astype(np.float32),
-            'agent_species': np.random.randint(1, 9, num_agents, dtype=np.int32),
+            'species': np.random.randint(1, 9, num_agents, dtype=np.int32),
             'current_agent_count': num_agents
         }
         queues['box2d_to_tf'].put(update_data)

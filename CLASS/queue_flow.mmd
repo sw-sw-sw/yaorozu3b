@@ -1,4 +1,4 @@
-```mermaid
+
 classDiagram
     class AgentsData {
         +update_positions(positions: np.ndarray)
@@ -38,4 +38,3 @@ classDiagram
     Box2DSimulation --> TensorFlowSimulation : box2d_to_tf
     Box2DSimulation --> Ecosystem : box2d_to_eco
     Ecosystem --> AgentsData : update_data
-```

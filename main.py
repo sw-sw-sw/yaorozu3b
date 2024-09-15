@@ -27,6 +27,7 @@ def eco_run(queues, shared_memory, running, initialization_complete, eco_init_do
     while running.value:
         timer.start()
         ecosystem.update()
+        time.sleep(0.005)
         timer.print_fps(5)
 
 def tf_run(queues, shared_memory, running, initialization_complete, eco_init_done):

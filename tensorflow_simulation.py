@@ -2,7 +2,6 @@ import tensorflow as tf
 from config_manager import ConfigManager
 import time
 import numpy as np
-import ctypes
 from log import *
 from queue import Empty
 
@@ -29,37 +28,43 @@ class TensorFlowSimulation:
         self.world_size = tf.constant([self.world_width, self.world_height], dtype=tf.float32)
         self.world_center = self.world_size / 2
         self.world_radius = tf.reduce_min(self.world_size) / 2 + 50
-        self.max_force = tf.Variable(self.config_manager.get_trait_value('MAX_FORCE'), dtype=tf.float32)
-        self.separation_distance = tf.Variable(self.config_manager.get_trait_value('SEPARATION_DISTANCE'), dtype=tf.float32)
-        self.cohesion_distance = tf.Variable(self.config_manager.get_trait_value('COHESION_DISTANCE'), dtype=tf.float32)
-        self.separation_weight = tf.Variable(self.config_manager.get_trait_value('SEPARATION_WEIGHT'), dtype=tf.float32)
-        self.cohesion_weight = tf.Variable(self.config_manager.get_trait_value('COHESION_WEIGHT'), dtype=tf.float32)
-        self.center_attraction_weight = tf.Variable(self.config_manager.get_trait_value('CENTER_ATTRACTION_WEIGHT'), dtype=tf.float32)
-        self.rotation_strength = tf.Variable(self.config_manager.get_trait_value('ROTATION_STRENGTH'), dtype=tf.float32)
-        self.confinement_weight = tf.Variable(self.config_manager.get_trait_value('CONFINEMENT_WEIGHT'), dtype=tf.float32)
 
-        self.escape_distance = tf.Variable(self.config_manager.get_trait_value('ESCAPE_DISTANCE'), dtype=tf.float32)
-        self.escape_weight = tf.Variable(self.config_manager.get_trait_value('ESCAPE_WEIGHT'), dtype=tf.float32)
-        self.chase_distance = tf.Variable(self.config_manager.get_trait_value('CHASE_DISTANCE'), dtype=tf.float32)
-        self.chase_weight = tf.Variable(self.config_manager.get_trait_value('CHASE_WEIGHT'), dtype=tf.float32)
-
-        # 共有メインプロパティー
-        self.tf_positions = tf.Variable(tf.zeros((self.max_agents_num, 2), dtype=tf.float32))
-        self.tf_species = tf.Variable(tf.zeros([self.max_agents_num], dtype=tf.int32))
-        self.tf_current_agent_count = tf.Variable(0, dtype=tf.int32)  # 初期値を0に変更
-
-        self.tf_forces = tf.Variable(tf.zeros((self.max_agents_num, 2), dtype=tf.float32))
-
-
-        # 種別情報の初期化
-        self.predator_species = tf.constant([self.config_manager.get_species_trait_value('PREDATOR_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
-        self.prey_species = tf.constant([self.config_manager.get_species_trait_value('PREY_SPECIES', i) for i in range(1, 9)], dtype=tf.int32)
         # Profiling properties
         self.profiling_enabled = False
         self.profiling_results = {}
         
-        self.initialized = False
+        # Initialize simulation parameters as tf.Variables
+        self._init_simulation_parameters()
 
+        # Initialize agent data as tf.Variables
+        self.tf_positions = tf.Variable(tf.zeros((self.max_agents_num, 2), dtype=tf.float32))
+        self.tf_species = tf.Variable(tf.zeros([self.max_agents_num], dtype=tf.int32))
+        self.tf_current_agent_count = tf.Variable(0, dtype=tf.int32)
+        self.tf_forces = tf.Variable(tf.zeros((self.max_agents_num, 2), dtype=tf.float32))
+
+        # Initialize species information
+        self._init_species_information()
+        self.initialized = False
+    def _init_simulation_parameters(self):
+        param_names = [
+            'MAX_FORCE', 'SEPARATION_DISTANCE', 'COHESION_DISTANCE', 'SEPARATION_WEIGHT',
+            'COHESION_WEIGHT', 'CENTER_ATTRACTION_WEIGHT', 'ROTATION_STRENGTH',
+            'CONFINEMENT_WEIGHT', 'ESCAPE_DISTANCE', 'ESCAPE_WEIGHT', 'CHASE_DISTANCE',
+            'CHASE_WEIGHT'
+        ]
+        for param in param_names:
+            setattr(self, param.lower(), tf.Variable(
+                self.config_manager.get_trait_value(param), dtype=tf.float32
+            ))
+
+    def _init_species_information(self):
+        self.predator_species = tf.constant([
+            self.config_manager.get_species_trait_value('PREDATOR_SPECIES', i) for i in range(1, 9)
+        ], dtype=tf.int32)
+        self.prey_species = tf.constant([
+            self.config_manager.get_species_trait_value('PREY_SPECIES', i) for i in range(1, 9)
+        ], dtype=tf.int32)
+        
     #------------------for profiling---------------------
     
     def enable_profiling(self):
@@ -106,15 +111,15 @@ class TensorFlowSimulation:
         logger.info("TensorFlowSimulation is initializing now")
 
         while not self.initialized:
-            if not self._eco_to_tf_init.empty():
-                data = self._eco_to_tf_init.get()
+            try:
+                data = self._eco_to_tf_init.get(timeout=0.1)
                 self.tf_current_agent_count.assign(data['current_agent_count'])
                 self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
                 self.tf_species.assign(tf.convert_to_tensor(data['species'], dtype=tf.int32))
                 self.initialized = True
                 logger.info(f"TensorFlowSimulation Initialized with {self.tf_current_agent_count.numpy()} agents")
-            else:
-                time.sleep(0.1)  # Wait a bit before checking again
+            except Empty:
+                continue  # Queue is empty, continue waiting
         
         logger.info("TensorFlowSimulation initialized successfully")
     # ------------------- Main routine --------------------
@@ -126,12 +131,15 @@ class TensorFlowSimulation:
         self.update_ui_parameters()
 
     def update_property(self):
-        if not self._box2d_to_tf.empty():
-            data = self._box2d_to_tf.get() # データーが来てから処理する。
-            self.tf_current_agent_count.assign(data['current_agent_count'])
+        try:
+            data = self._box2d_to_tf.get_nowait()
+            current_count = tf.constant(data['current_agent_count'], dtype=tf.int32)
+            self.tf_current_agent_count.assign(current_count)
             self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
             self.tf_species.assign(tf.convert_to_tensor(data['species'], dtype=tf.int32))
-            
+        except Empty:
+            pass  # No new data available
+
     def send_forces_to_box2d(self, forces):
         self.queues['tf_to_box2d'].put(forces)
         
@@ -256,7 +264,9 @@ class TensorFlowSimulation:
 
     def update_ui_parameters(self):
         while not self._ui_to_tensorflow_queue.empty():
-            param_name, value = self._ui_to_tensorflow_queue.get()
-            print(param_name, value)
-            if hasattr(self, param_name):
-                getattr(self, param_name).assign(value)
+            try:
+                param_name, value = self._ui_to_tensorflow_queue.get_nowait()
+                if hasattr(self, param_name.lower()):
+                    getattr(self, param_name.lower()).assign(value)
+            except Empty:
+                break  # Queue is empty, exit the loop

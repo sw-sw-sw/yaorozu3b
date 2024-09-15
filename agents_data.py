@@ -102,14 +102,22 @@ class AgentsData:
         }
         self._eco_to_visual_render.put(visual_data)
         return visual_data
-
+    
     def send_data_to_tf_initialize(self):
         data = {
-            'positions': self.positions,
-            'species': self.species,
-            'current_agent_count': self.current_agent_count
+            'positions': self.positions,  # numpy配列をリストに変換
+            'species': self.species,      # numpy配列をリストに変換
+            'current_agent_count': self.current_agent_count  # intに変換
         }
         self._eco_to_tf_init.put(data)
+        
+    # def send_data_to_tf_initialize(self):
+    #     data = {
+    #         'positions': self.positions.tolist(),  # numpy配列をリストに変換
+    #         'species': self.species.tolist(),      # numpy配列をリストに変換
+    #         'current_agent_count': int(self.current_agent_count)  # intに変換
+    #     }
+    #     self._eco_to_tf_init.put(data)
 
     def send_data_to_box2d_initialize(self):
         data = {
