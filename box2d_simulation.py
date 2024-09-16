@@ -1,12 +1,12 @@
 from Box2D import b2World, b2Vec2, b2BodyDef, b2_dynamicBody, b2CircleShape
 import numpy as np
-import logging
 import random
-import time, logging
+import time
 from config_manager import ConfigManager
-from log import *
+from log import get_logger
 from queue import Empty
 
+logger = get_logger()
 
 class Box2DSimulation:
     def __init__(self, queues):
@@ -20,8 +20,6 @@ class Box2DSimulation:
         self._tf_to_box2d = queues['tf_to_box2d']
         self._box2d_to_tf = queues['box2d_to_tf']
         self._box2d_to_eco = queues['box2d_to_eco'] 
-
-        # self._eco_to_visual_render = queues['eco_to_visual_render']
 
         # ConfigManager setup
         self.config_manager = ConfigManager()
@@ -37,8 +35,8 @@ class Box2DSimulation:
         self.forces = np.zeros((self.max_agents_num, 2), dtype=np.float32)
 
         self.current_agent_count = 0
-
         self.last_random_velocity_time = time.time()
+        logger.info("Box2DSimulation initialized")
   
     def initialize(self):
         logger.info("Box2DSimulation is initializing")
@@ -73,6 +71,7 @@ class Box2DSimulation:
                            friction=friction, restitution=restitution)
         body.mass = mass * circle_shape.radius
         self.bodies[agent_id] = body
+        logger.debug(f"Created body for agent {agent_id} of species {species}")
         
     def update(self):
         self.process_ecosystem_queue()
@@ -81,30 +80,21 @@ class Box2DSimulation:
         self.update_positions()
         self.send_data_to_tf()
         self.send_data_to_eco()
-        # self.send_data_to_visual_render()
-        # self.apply_random_velocity()
     
     def process_ecosystem_queue(self):
         while not self._eco_to_box2d.empty():
             try:
                 update_data = self._eco_to_box2d.get_nowait()
                 action = update_data.get('action')
-                
-                start_time = time.time()
                 if action == 'add':
                     self._handle_agent_added(update_data)
                 elif action == 'remove':
                     self._handle_agent_removed(update_data)
                 else:
-                    logging.warning(f"Unknown action received: {action}")
-                
-                end_time = time.time()
-                processing_time = end_time - start_time
-                if processing_time > 0.001:  # 10ミリ秒以上かかった処理をログに記録
-                    logging.warning(f"Long operation detected: {action} took {processing_time:.4f} seconds")
+                    logger.warning(f"Box2DSimulation: Unknown action received: {action}")
             
             except Exception as e:
-                logging.error(f"Error processing ecosystem queue: {e}")
+                logger.exception(f"Box2DSimulation: Error processing ecosystem queue: {e}")
 
     def _handle_agent_added(self, data):
         agent_id = data['agent_id']
@@ -116,6 +106,7 @@ class Box2DSimulation:
         self.positions[index] = position
         self.species[index] = species
         self.agent_ids[index] = agent_id
+        logger.debug(f"Agent {agent_id} added to Box2D simulation. Total agents: {self.current_agent_count}")
         
     def _handle_agent_removed(self, data):
         agent_id = data['agent_id']
@@ -127,22 +118,24 @@ class Box2DSimulation:
             self.positions[index:-1] = self.positions[index+1:]
             self.species[index:-1] = self.species[index+1:]
             self.current_agent_count -= 1
-            logger.info(f"Agent {agent_id} removed from Box2D. Total agents: {self.current_agent_count}")
+            logger.info(f"Box2DSimulation:Agent {agent_id} removed from Box2D. Total agents: {self.current_agent_count}")
         else:
-            logger.warning(f"Attempted to remove non-existent agent {agent_id} from Box2D")
+            logger.warning(f"Box2DSimulation:Attempted to remove non-existent agent {agent_id} from Box2D")
 
     def update_forces(self):
         while not self._tf_to_box2d.empty():
-            forces = self._tf_to_box2d.get()
-            if len(forces) != self.current_agent_count:
-                # print(f"Warning: Agent count mismatch in Box2D. Expected {self.current_agent_count}, got {len(forces)}. Skipping update.")
-                forces = self.forces
-                
+            data = self._tf_to_box2d.get()
+            current_agent_count = data['current_agent_count']
+            forces = data['forces'][:current_agent_count]
+            if current_agent_count != self.current_agent_count:
+                logging.warning(f"Warning: Agent count mismatch in Box2D. Expected {self.current_agent_count}, got {current_agent_count}. Skipping update.")
+                break
+            
             for agent_id, force in zip(self.bodies.keys(), forces):
                 body = self.bodies[agent_id]
                 body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
-                self.forces = forces
-
+                    # self.forces = forces
+                
     def step(self):
         self.world.Step(self.dt, 6, 2)
 

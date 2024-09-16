@@ -10,68 +10,117 @@ from ecosystem import Ecosystem
 from config_manager import ConfigManager
 from parameter_control_ui import *
 from timer import Timer
-from log import *
+from log import get_logger, set_log_level
+import logging
 
-
-#------------------------------------- Main routine -----------------------------------------
+logger = get_logger()
 
 def eco_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     ecosystem = Ecosystem(queues)
     timer = Timer("Ecosystem")
     
-    ecosystem.initialize()
-
-    eco_init_done.set()  # Signal that Ecosystem initialization is complete
-    initialization_complete['Ecosystem'].set()
+    try:
+        ecosystem.initialize()
+        eco_init_done.set()  # Signal that Ecosystem initialization is complete
+        initialization_complete['Ecosystem'].set()
+        logger.info("Ecosystem initialization complete")
+    except Exception as e:
+        logger.exception(f"Error during Ecosystem initialization: {e}")
+        running.value = False
+        return
     
     while running.value:
-        timer.start()
-        ecosystem.update()
-        time.sleep(0.005)
-        timer.print_fps(5)
+        try:
+            timer.start()
+            ecosystem.update()
+            time.sleep(0.005)
+            timer.print_fps(5)
+        except Exception as e:
+            logger.exception(f"Error in Ecosystem update: {e}")
+            running.value = False
+            break
+    
+    logger.info("Ecosystem process ending")
 
 def tf_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     tensorflow = TensorFlowSimulation(queues)
     timer = Timer("TensorFlow")
     
-    eco_init_done.wait()  # Wait for Ecosystem initialization to complete
-    tensorflow.initialize()
-    initialization_complete['TensorFlow'].set()
+    try:
+        eco_init_done.wait()  # Wait for Ecosystem initialization to complete
+        tensorflow.initialize()
+        initialization_complete['TensorFlow'].set()
+        logger.info("TensorFlow initialization complete")
+    except Exception as e:
+        logger.exception(f"Error during TensorFlow initialization: {e}")
+        running.value = False
+        return
     
     while running.value:
-        timer.start()
-        tensorflow.update()
-        timer.print_fps(5)
-        time.sleep(0.001)
+        try:
+            timer.start()
+            tensorflow.update()
+            timer.print_fps(5)
+        except Exception as e:
+            logger.exception(f"Error in TensorFlow update: {e}")
+            running.value = False
+            break
+    
+    logger.info("TensorFlow process ending")
 
 def box2d_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     box2d = Box2DSimulation(queues)
     timer = Timer("Box2D")
     
-    eco_init_done.wait()  # Wait for Ecosystem initialization to complete
-    box2d.initialize()
-    initialization_complete['Box2D'].set()
+    try:
+        eco_init_done.wait()  # Wait for Ecosystem initialization to complete
+        box2d.initialize()
+        initialization_complete['Box2D'].set()
+        logger.info("Box2D initialization complete")
+    except Exception as e:
+        logger.exception(f"Error during Box2D initialization: {e}")
+        running.value = False
+        return
     
     while running.value:
-        timer.start()
-        box2d.update()
-        timer.print_fps(5)
-        time.sleep(0.001)
+        try:
+            timer.start()
+            box2d.update()
+            timer.print_fps(5)
+        except Exception as e:
+            logger.exception(f"Error in Box2D update: {e}")
+            running.value = False
+            break
+    
+    logger.info("Box2D process ending")
 
 def visual_system_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     timer = Timer("Render ")
     visual_system = VisualSystem(queues)
-    eco_init_done.wait() 
-    visual_system.initialize()
-    initialization_complete['Visual'].set()
+    
+    try:
+        eco_init_done.wait() 
+        visual_system.initialize()
+        initialization_complete['Visual'].set()
+        logger.info("Visual System initialization complete")
+    except Exception as e:
+        logger.exception(f"Error during Visual System initialization: {e}")
+        running.value = False
+        return
     
     while running.value:
-        timer.start()
-        visual_system.update()
-        timer.print_fps(5)
-        time.sleep(0.001)
-        
+        try:
+            timer.start()
+            visual_system.update()
+            timer.print_fps(5)
+            time.sleep(0.001)
+        except Exception as e:
+            logger.exception(f"Error in Visual System update: {e}")
+            running.value = False
+            break
+    
     visual_system.cleanup()
+    logger.info("Visual System process ending")
 
 def run_simulation():
     logger.info("Starting simulation")
@@ -163,4 +212,5 @@ def run_simulation():
     logger.info("Simulation ended")
 
 if __name__ == "__main__":
+    set_log_level(logging.INFO)  # ログレベルを設定（必要に応じて変更可能）
     run_simulation()

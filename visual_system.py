@@ -5,9 +5,13 @@ from creature import Creature
 from typing import Dict
 import time
 from queue import Empty
+from log import get_logger
+
+logger = get_logger()
 
 class VisualSystem:
     def __init__(self, queues):
+        logger.info("Initializing VisualSystem")
         pygame.init()
         self.config_manager = ConfigManager()
         self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
@@ -29,15 +33,16 @@ class VisualSystem:
         
         self.clock = pygame.time.Clock()
         self.current_agent_count = 0
-
+        logger.info("VisualSystem initialization completed")
 
     def initialize(self):
-        print("VisualSystem: Waiting for initialization data...")
+        logger.info("VisualSystem: Waiting for initialization data...")
         while True:
             try:
                 init_data = self._eco_to_visual_init.get(timeout=0.1)
                 break
             except Empty:
+                logger.warning("VisualSystem: No initialization data received, retrying...")
                 continue
         _positions = init_data['positions']
         _agent_ids = init_data['agent_ids']
@@ -50,25 +55,29 @@ class VisualSystem:
             agent_id = _agent_ids[i]
             self.create_creature(agent_id, species, x, y)
 
-        print(f"VisualSystem initialized with {self.current_agent_count} creatures")
+        logger.info(f"VisualSystem initialized with {self.current_agent_count} creatures")
 
     def create_creature(self, agent_id: int, species: int, x: float, y: float):
         creature = Creature(species, pygame.Vector2(x, y))
         self.creatures[agent_id] = creature
         self.all_sprites.add(creature)
+        logger.debug(f"Created creature: agent_id={agent_id}, species={species}, position=({x}, {y})")
         
     def remove_creature(self, agent_id):
         if agent_id in self.creatures:
             self.all_sprites.remove(self.creatures[agent_id])
             del self.creatures[agent_id]
-
-    # ------------------ Main update ---------------------
+            logger.debug(f"Removed creature: agent_id={agent_id}")
+        else:
+            logger.warning(f"Attempted to remove non-existent creature: agent_id={agent_id}")
 
     def update(self):
-        self.process_queue()
-        self.update_creatures()
-        self.draw()
-        
+        try:
+            self.process_queue()
+            self.update_creatures()
+            self.draw()
+        except Exception as e:
+            logger.exception(f"Error in VisualSystem update: {e}")
         
     def process_queue(self):
         while True:
@@ -82,6 +91,7 @@ class VisualSystem:
                     self._handle_agent_removed(update_data)
             except Empty:
                 break
+
     def update_creatures(self):
         try:
             render_data = self._eco_to_visual_render.get_nowait()
@@ -93,8 +103,9 @@ class VisualSystem:
                 agent_id = agent_ids[i]
                 if agent_id in self.creatures:
                     self.creatures[agent_id].update(pygame.Vector2(positions[i][0], positions[i][1]))
+            logger.debug(f"Updated {self.current_agent_count} creatures")
         except Empty:
-            pass
+            logger.debug("No new render data available")
                     
     def draw(self):
         self.world_surface.fill(self.background_color)
@@ -104,6 +115,7 @@ class VisualSystem:
         self.screen.fill(self.background_color)
         self.screen.blit(surface_to_draw, rect)
         pygame.display.flip()
+        logger.debug("Frame rendered")
 
     def _handle_agent_added(self, data):
         agent_id = data['agent_id']
@@ -111,17 +123,17 @@ class VisualSystem:
         position = pygame.Vector2(data['position'])
         self.create_creature(agent_id, species, position.x, position.y)
         self.current_agent_count += 1
-        print(f"VisualSystem: Agent {agent_id} added. Total agents: {self.current_agent_count}")
+        logger.debug(f"Agent {agent_id} added. Total agents: {self.current_agent_count}")
 
     def _handle_agent_removed(self, data):
         agent_id = data['agent_id']
         if agent_id in self.creatures:
             self.remove_creature(agent_id)
             self.current_agent_count -= 1
-            print(f"VisualSystem: Agent {agent_id} removed. Total agents: {self.current_agent_count}")
+            logger.debug(f"Agent {agent_id} removed. Total agents: {self.current_agent_count}")
         else:
-            print(f"VisualSystem: Attempted to remove non-existent agent {agent_id}")
+            logger.warning(f"Attempted to remove non-existent agent {agent_id}")
 
     def cleanup(self):
         pygame.quit()
-        
+        logger.info("VisualSystem cleaned up")

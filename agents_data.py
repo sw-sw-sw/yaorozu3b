@@ -1,9 +1,12 @@
 import numpy as np
 from queue import Empty
-from log import *
+from log import get_logger
+
+logger = get_logger()
 
 class AgentsData:
     def __init__(self, max_agents_num, queue_dict):
+        logger.info("Initializing AgentsData")
         self.max_agents_num = max_agents_num
         self.positions = np.zeros((max_agents_num, 2), dtype=np.float32)
         self.species = np.zeros(max_agents_num, dtype=np.int32)
@@ -17,9 +20,10 @@ class AgentsData:
         self._eco_to_box2d_init = queue_dict['eco_to_box2d_init']
         self._eco_to_visual_init = queue_dict['eco_to_visual_init']
         self._eco_to_tf_init = queue_dict['eco_to_tf_init']
-        self._eco_to_tf = queue_dict['eco_to_tf']  # New queue for TensorFlow
+        self._eco_to_tf = queue_dict['eco_to_tf']
         self._box2d_to_eco = queue_dict['box2d_to_eco']
         self._eco_to_visual_render = queue_dict['eco_to_visual_render']
+        logger.info(f"AgentsData initialized with max_agents_num: {max_agents_num}")
         
     def _add_agent_internal(self, species, position):
         if self.current_agent_count < self.max_agents_num:
@@ -35,19 +39,25 @@ class AgentsData:
             self.agent_ids[index] = agent_id
             self.current_agent_count += 1
 
+            logger.debug(f"Agent added internally: id={agent_id}, species={species}, position={position}")
             return agent_id
+        logger.warning("Failed to add agent: maximum capacity reached")
         return None
 
     def add_agent(self, species, position):
         agent_id = self._add_agent_internal(species, position)
         if agent_id is not None:
             self._notify_agent_add(agent_id, species, position)
+            logger.info(f"Agent added: id={agent_id}, species={species}, position={position}")
         else:
-            print(f"Error: Cannot add agent. Maximum capacity of {self.max_agents_num} reached.")
+            logger.error(f"Error: Cannot add agent. Maximum capacity of {self.max_agents_num} reached.")
         return agent_id
 
     def add_agent_no_notify(self, species, position):
-        return self._add_agent_internal(species, position)
+        agent_id = self._add_agent_internal(species, position)
+        if agent_id is not None:
+            logger.debug(f"Agent added without notification: id={agent_id}, species={species}, position={position}")
+        return agent_id
 
     def _notify_agent_add(self, agent_id, species, position):
         add_data = {
@@ -58,8 +68,7 @@ class AgentsData:
         }
         self._eco_to_box2d.put(add_data)
         self._eco_to_visual.put(add_data)
-        # self._eco_to_tf.put(add_data)  # Send to TensorFlow
-
+        logger.debug(f"Notified agent addition: id={agent_id}")
 
     def remove_agent(self, agent_id):
         index = np.where(self.agent_ids[:self.current_agent_count] == agent_id)[0]
@@ -78,8 +87,9 @@ class AgentsData:
             self.available_ids.append(agent_id)
             
             self._notify_agent_removed(agent_id)
+            logger.info(f"Agent removed: id={agent_id}")
         else:
-            print(f"Warning: Agent {agent_id} does not exist. No agent removed.")
+            logger.warning(f"Warning: Agent {agent_id} does not exist. No agent removed.")
 
     def _notify_agent_removed(self, agent_id):
         remove_data = {
@@ -88,6 +98,7 @@ class AgentsData:
         }
         self._eco_to_visual.put(remove_data)
         self._eco_to_box2d.put(remove_data)
+        logger.debug(f"Notified agent removal: id={agent_id}")
 
     def update(self):
         try:
@@ -97,27 +108,26 @@ class AgentsData:
 
                 if len(box2d_data['positions']) == self.current_agent_count:
                     self.positions[:self.current_agent_count] = box2d_data['positions']
-                    # self.current_agent_count = box2d_data['current_agent_count']
+                    self.current_agent_count = box2d_data['current_agent_count']
+                    logger.debug(f"Updated agent data. Current agent count: {self.current_agent_count}")
                 else:
-                    logging.warning(f"Agent count mismatch. Box2D: {len(box2d_data['positions'])}, AgentsData: {self.current_agent_count}")
-
+                    logger.warning(f"Agent count mismatch. Box2D: {len(box2d_data['positions'])}, AgentsData: {self.current_agent_count}")
+                    
         except Exception as e:
-            logging.error(f"Error in Ecosystem update: {e}")
-
+            logger.exception(f"Error in Ecosystem update: {e}")
 
     def send_data_to_visual(self, visual_data):
         self._eco_to_visual_render.put(visual_data)
-   
-    
+        logger.debug("Sent data to visual system")
 
     def send_data_to_tf_initialize(self):
         data = {
-            'positions': self.positions,  # numpy配列をリストに変換
-            'species': self.species,      # numpy配列をリストに変換
-            'current_agent_count': self.current_agent_count  # intに変換
+            'positions': self.positions,
+            'species': self.species,
+            'current_agent_count': self.current_agent_count
         }
         self._eco_to_tf_init.put(data)
-        
+        logger.info(f"Sent initialization data to TensorFlow. Agent count: {self.current_agent_count}")
 
     def send_data_to_box2d_initialize(self):
         data = {
@@ -127,7 +137,7 @@ class AgentsData:
             'current_agent_count': self.current_agent_count
         }
         self._eco_to_box2d_init.put(data)
-
+        logger.info(f"Sent initialization data to Box2D. Agent count: {self.current_agent_count}")
 
     def send_data_to_visual_initialize(self):
         data = {
@@ -137,8 +147,7 @@ class AgentsData:
             'current_agent_count': self.current_agent_count
         }
         self._eco_to_visual_init.put(data)
+        logger.info(f"Sent initialization data to Visual System. Agent count: {self.current_agent_count}")
 
-        
     def available_agent_ids(self):
         return self.agent_ids[:self.current_agent_count]
-    

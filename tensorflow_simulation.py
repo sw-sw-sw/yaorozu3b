@@ -2,18 +2,21 @@ import tensorflow as tf
 from config_manager import ConfigManager
 import time
 import numpy as np
-from log import *
+from log import get_logger
 from queue import Empty
+
+logger = get_logger()
 
 class TensorFlowSimulation:
     def __init__(self, queues, max_agents=None):
-       
+        logger.info("Initializing TensorFlowSimulation")
         # queue setting
         self.queues = queues
         self._ui_to_tensorflow_queue = queues['ui_to_tensorflow']
         self._box2d_to_tf = queues['box2d_to_tf']
         self._eco_to_tf_init = queues['eco_to_tf_init']
         self._eco_to_tf = queues['eco_to_tf']
+        self._tf_to_box2d = queues['tf_to_box2d']
         self.config_manager = ConfigManager()
         
         # ConfigManagerから値を取得してプロパティとして設定
@@ -45,7 +48,10 @@ class TensorFlowSimulation:
         # Initialize species information
         self._init_species_information()
         self.initialized = False
+        logger.info("TensorFlowSimulation initialization completed")
+
     def _init_simulation_parameters(self):
+        logger.debug("Initializing simulation parameters")
         param_names = [
             'MAX_FORCE', 'SEPARATION_DISTANCE', 'COHESION_DISTANCE', 'SEPARATION_WEIGHT',
             'COHESION_WEIGHT', 'CENTER_ATTRACTION_WEIGHT', 'ROTATION_STRENGTH',
@@ -56,8 +62,10 @@ class TensorFlowSimulation:
             setattr(self, param.lower(), tf.Variable(
                 self.config_manager.get_trait_value(param), dtype=tf.float32
             ))
+        logger.debug("Simulation parameters initialized")
 
     def _init_species_information(self):
+        logger.debug("Initializing species information")
         self.predator_species = tf.constant([
             self.config_manager.get_species_trait_value('PREDATOR_SPECIES', i) for i in range(1, 9)
         ], dtype=tf.int32)
@@ -65,6 +73,7 @@ class TensorFlowSimulation:
             self.config_manager.get_species_trait_value('PREY_SPECIES', i) for i in range(1, 9)
         ], dtype=tf.int32)
         
+        logger.debug("Species information initialized")
     #------------------for profiling---------------------
     
     def enable_profiling(self):
@@ -108,47 +117,62 @@ class TensorFlowSimulation:
         
     # ---------------- property update -----------------------
     def initialize(self):
-        logger.info("TensorFlowSimulation is initializing now")
+        logger.info("TensorFlowSimulation is initializing")
 
         while not self.initialized:
             try:
                 data = self._eco_to_tf_init.get(timeout=0.1)
-                self.tf_current_agent_count.assign(data['current_agent_count'])
+                self.tf_current_agent_count.assign(tf.convert_to_tensor(data['current_agent_count'], dtype=tf.int32))
                 self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
                 self.tf_species.assign(tf.convert_to_tensor(data['species'], dtype=tf.int32))
                 self.initialized = True
                 logger.info(f"TensorFlowSimulation Initialized with {self.tf_current_agent_count.numpy()} agents")
             except Empty:
+                logger.warning("Waiting for initialization data from Ecosystem")
                 continue  # Queue is empty, continue waiting
         
         logger.info("TensorFlowSimulation initialized successfully")
-    # ------------------- Main routine --------------------
-    
+
     def update(self):
-        self.update_property()
-        forces = self.calculate_forces()
-        self.send_forces_to_box2d(forces.numpy())
-        self.update_ui_parameters()
+        try:
+            self.update_property()
+            forces = self.calculate_forces()
+            self.send_forces_to_box2d(forces.numpy()[:])
+            self.update_ui_parameters()
+        except Exception as e:
+            logger.exception(f"Error in TensorFlowSimulation update: {e}")
 
     def update_property(self):
         try:
             data = self._box2d_to_tf.get_nowait()
-            current_count = tf.constant(data['current_agent_count'], dtype=tf.int32)
-            self.tf_current_agent_count.assign(current_count)
-            self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
-            self.tf_species.assign(tf.convert_to_tensor(data['species'], dtype=tf.int32))
-        except Empty:
-            pass  # No new data available
+            new_count = tf.convert_to_tensor(data['current_agent_count'], dtype=tf.int32)
+            new_positions = tf.convert_to_tensor(data['positions'], dtype=tf.float32)
+            new_species = tf.convert_to_tensor(data['species'], dtype=tf.int32)
 
-    def send_forces_to_box2d(self, forces):
-        self.queues['tf_to_box2d'].put(forces)
-        
+            # Create a mask for active agents
+            mask = tf.range(self.max_agents_num) < new_count
+            mask = tf.reshape(mask, (-1, 1))
+
+            # Update positions and species, zeroing out inactive agents
+            self.tf_positions.assign(tf.where(mask, new_positions, tf.zeros_like(new_positions)))
+            self.tf_species.assign(tf.where(mask[:, 0], new_species, tf.zeros_like(new_species)))
+            self.tf_current_agent_count.assign(new_count)
+            logger.debug(f"Updated TensorFlow properties. Current agent count: {new_count}")
+        except Empty:
+            logger.debug("No new data available for TensorFlow update")
+
+    def send_forces_to_box2d(self, np_forces):
+        data = {
+            'forces': np_forces,
+            'current_agent_count': int(self.tf_current_agent_count.numpy())
+        }
+        self._tf_to_box2d.put(data)
+        logger.debug(f"Sent forces to Box2D for {data['current_agent_count']} agents")
+
     @tf.function
     def calculate_forces(self):
-        positions = self.tf_positions[:self.tf_current_agent_count]
-        species = self.tf_species[:self.tf_current_agent_count]
-        species_forces = self._limit_magnitude(self._species_forces(positions, species))
-        environment_forces = self._limit_magnitude(self._environment_forces(positions))
+        species_forces = self._limit_magnitude(self._species_forces(self.tf_positions, self.tf_species))
+        environment_forces = self._limit_magnitude(self._environment_forces(self.tf_positions))
         return species_forces + environment_forces
 
     @profile
@@ -268,5 +292,6 @@ class TensorFlowSimulation:
                 param_name, value = self._ui_to_tensorflow_queue.get_nowait()
                 if hasattr(self, param_name.lower()):
                     getattr(self, param_name.lower()).assign(value)
+                    logger.debug(f"Updated UI parameter: {param_name} = {value}")
             except Empty:
                 break  # Queue is empty, exit the loop
