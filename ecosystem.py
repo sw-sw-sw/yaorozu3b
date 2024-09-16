@@ -67,7 +67,7 @@ class Ecosystem:
                 agent_id = random.choice(agent_ids)
                 species = self.ad.species[agent_id]
                 position = self.ad.positions[agent_id] + np.array([1,1])
-                for _ in range(1):
+                for _ in range(5):
                     new_agent_id = self.ad.add_agent(species, position + self.rnd_pos())
                     if new_agent_id is None:
                         break
@@ -91,5 +91,5 @@ class Ecosystem:
             logger.warning("No agents available for removal")
             
     def rnd_pos(self):
-        rnd = np.array([random.randint(-20, 20), random.randint(-20, 20)])
+        rnd = np.array([random.randint(-30, 30), random.randint(-30, 30)])
         return rnd

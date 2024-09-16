@@ -1,6 +1,7 @@
 import numpy as np
 from queue import Empty
 from log import get_logger
+import time
 
 logger = get_logger()
 
@@ -70,6 +71,8 @@ class AgentsData:
         self._eco_to_visual.put(add_data)
         logger.debug(f"Notified agent addition: id={agent_id}")
 
+
+        
     def remove_agent(self, agent_id):
         index = np.where(self.agent_ids[:self.current_agent_count] == agent_id)[0]
         if len(index) > 0:
@@ -105,10 +108,10 @@ class AgentsData:
             if not self._box2d_to_eco.empty():
                 box2d_data = self._box2d_to_eco.get_nowait()
                 self.send_data_to_visual(box2d_data)
-
-                if len(box2d_data['positions']) == self.current_agent_count:
-                    self.positions[:self.current_agent_count] = box2d_data['positions']
-                    self.current_agent_count = box2d_data['current_agent_count']
+                positions = box2d_data['positions']
+                if len(positions) == self.current_agent_count:
+                    self.positions[:self.current_agent_count] = positions
+                    # self.current_agent_count = box2d_data['current_agent_count']
                     logger.debug(f"Updated agent data. Current agent count: {self.current_agent_count}")
                 else:
                     logger.warning(f"Agent count mismatch. Box2D: {len(box2d_data['positions'])}, AgentsData: {self.current_agent_count}")
@@ -120,6 +123,7 @@ class AgentsData:
         self._eco_to_visual_render.put(visual_data)
         logger.debug("Sent data to visual system")
 
+        
     def send_data_to_tf_initialize(self):
         data = {
             'positions': self.positions,

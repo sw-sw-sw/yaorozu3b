@@ -75,9 +75,10 @@ class Box2DSimulation:
         
     def update(self):
         self.process_ecosystem_queue()
+        self.update_positions()
         self.update_forces()
         self.step()
-        self.update_positions()
+        
         self.send_data_to_tf()
         self.send_data_to_eco()
     
@@ -107,6 +108,7 @@ class Box2DSimulation:
         self.species[index] = species
         self.agent_ids[index] = agent_id
         logger.debug(f"Agent {agent_id} added to Box2D simulation. Total agents: {self.current_agent_count}")
+        # self.send_data_to_tf()
         
     def _handle_agent_removed(self, data):
         agent_id = data['agent_id']
@@ -123,21 +125,23 @@ class Box2DSimulation:
             logger.warning(f"Box2DSimulation:Attempted to remove non-existent agent {agent_id} from Box2D")
 
     def update_forces(self):
-        while not self._tf_to_box2d.empty():
-            data = self._tf_to_box2d.get()
-            current_agent_count = data['current_agent_count']
-            forces = data['forces'][:current_agent_count]
-            if current_agent_count != self.current_agent_count:
-                logging.warning(f"Warning: Agent count mismatch in Box2D. Expected {self.current_agent_count}, got {current_agent_count}. Skipping update.")
-                break
-            
-            for agent_id, force in zip(self.bodies.keys(), forces):
-                body = self.bodies[agent_id]
-                body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
-                    # self.forces = forces
+        try:
+            while True:
+                data = self._tf_to_box2d.get_nowait()
+                current_agent_count = data['current_agent_count']
+                if current_agent_count != self.current_agent_count:
+                    logger.warning(f"Warning: Agent count mismatch in Box2D. Expected {self.current_agent_count}, got {current_agent_count}. Skipping update.")
+                    break
                 
+                forces = data['forces'][:current_agent_count]
+                for agent_id, force in zip(self.bodies.keys(), forces):
+                    body = self.bodies[agent_id]
+                    body.ApplyForceToCenter((float(force[0]), float(force[1])), wake=True)
+        except Empty:
+            pass
+                    
     def step(self):
-        self.world.Step(self.dt, 6, 2)
+        self.world.Step(self.dt, 12, 3)
 
     def update_positions(self):
         for i, agent_id in enumerate(self.agent_ids[:self.current_agent_count]):
@@ -147,9 +151,9 @@ class Box2DSimulation:
 
     def send_data_to_tf(self):
         data = {
-            'positions': self.positions.tolist(),  # numpy配列をリストに変換
-            'species': self.species.tolist(),      # numpy配列をリストに変換
-            'current_agent_count': int(self.current_agent_count)  # intに変換
+            'positions': self.positions,
+            'species': self.species,
+            'current_agent_count': self.current_agent_count
         }
         self._box2d_to_tf.put(data)
     

@@ -134,32 +134,24 @@ class TensorFlowSimulation:
         logger.info("TensorFlowSimulation initialized successfully")
 
     def update(self):
-        try:
-            self.update_property()
-            forces = self.calculate_forces()
-            self.send_forces_to_box2d(forces.numpy()[:])
-            self.update_ui_parameters()
-        except Exception as e:
-            logger.exception(f"Error in TensorFlowSimulation update: {e}")
-
+        self.update_property()
+        forces = self.calculate_forces()
+        self.send_forces_to_box2d(forces.numpy()[:])
+        self.update_ui_parameters()
+        
     def update_property(self):
         try:
             data = self._box2d_to_tf.get_nowait()
             new_count = tf.convert_to_tensor(data['current_agent_count'], dtype=tf.int32)
             new_positions = tf.convert_to_tensor(data['positions'], dtype=tf.float32)
             new_species = tf.convert_to_tensor(data['species'], dtype=tf.int32)
-
-            # Create a mask for active agents
             mask = tf.range(self.max_agents_num) < new_count
             mask = tf.reshape(mask, (-1, 1))
-
-            # Update positions and species, zeroing out inactive agents
             self.tf_positions.assign(tf.where(mask, new_positions, tf.zeros_like(new_positions)))
             self.tf_species.assign(tf.where(mask[:, 0], new_species, tf.zeros_like(new_species)))
             self.tf_current_agent_count.assign(new_count)
-            logger.debug(f"Updated TensorFlow properties. Current agent count: {new_count}")
         except Empty:
-            logger.debug("No new data available for TensorFlow update")
+            pass
 
     def send_forces_to_box2d(self, np_forces):
         data = {
