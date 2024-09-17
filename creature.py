@@ -86,7 +86,7 @@ class Creature(pygame.sprite.Sprite):
         if self._flash:
             pygame.draw.circle(self.image, (255, 255, 255), center, self._flash_radius)
         
-    def update(self, position: Vector2 = None):
+    def update(self, position: pygame.Vector2 = None):
         if position is not None:
             self._pos = position
         

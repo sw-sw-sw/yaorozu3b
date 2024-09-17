@@ -11,9 +11,8 @@ from collections import deque
 
 logger = get_logger()
 
-class PositionBuffer:
+class NumpyPositionBuffer:
     def __init__(self, target_size=10, min_size=5, max_size=20):
-        self.initial_positions = {}
         self.buffer = deque(maxlen=max_size)
         self.target_size = target_size
         self.min_size = min_size
@@ -21,49 +20,42 @@ class PositionBuffer:
         self.current_positions = {}
         self.next_positions = {}
         self.overflow_count = 0
-        
+
     def initialize(self, initial_positions):
-        self.initial_positions = initial_positions.copy()
-        self.current_positions = initial_positions.copy()
+        self.current_positions = initial_positions
         self.next_positions = initial_positions.copy()
         self.buffer.clear()
-        self.buffer.append(initial_positions)
+        self.buffer.append(self.current_positions)
 
     def update(self, new_positions, interpolation_steps):
         self.current_positions = self.next_positions
         self.next_positions = new_positions
-        interpolated_frames = self._interpolate(interpolation_steps)
+        interpolated_frames = self._interpolate_vectorized(interpolation_steps)
         self.add_frames(interpolated_frames)
         self._adjust_buffer_size()
         return self.get_stats()
 
-    def _interpolate(self, steps):
-        frames = []
-        for step in range(steps):
-            t = step / steps
-            frame = {
-                agent_id: self._lerp(self.current_positions.get(agent_id, pos), pos, t)
-                for agent_id, pos in self.next_positions.items()
-            }
-            frames.append(frame)
-        return frames
-
-    def _lerp(self, start, end, t):
-        if isinstance(start, pygame.Vector2) and isinstance(end, pygame.Vector2):
-            return start.lerp(end, t)
-        return np.lerp(start, end, t)
+    def _interpolate_vectorized(self, steps):
+        agent_ids = list(self.current_positions.keys())
+        current_array = np.array([self.current_positions[aid] for aid in agent_ids])
+        next_array = np.array([self.next_positions[aid] for aid in agent_ids])
+        
+        t_values = np.linspace(0, 1, steps+1)[1:]
+        interpolated_arrays = current_array[np.newaxis, :, :] + \
+                              (next_array - current_array)[np.newaxis, :, :] * t_values[:, np.newaxis, np.newaxis]
+        
+        return [{aid: interpolated_arrays[i, j] for j, aid in enumerate(agent_ids)} 
+                for i in range(steps)]
 
     def add_frames(self, frames):
         for frame in frames:
             if len(self.buffer) >= self.max_size:
                 self.overflow_count += 1
-                self.buffer.popleft()  # Remove the oldest frame
+                self.buffer.popleft()
             self.buffer.append(frame)
 
     def get_next_position(self):
-        if not self.buffer:
-            return self.initial_positions
-        return self.buffer.popleft() if self.buffer else None
+        return self.buffer.popleft() if self.buffer else self.current_positions
 
     def _adjust_buffer_size(self):
         current_size = len(self.buffer)
@@ -72,7 +64,7 @@ class PositionBuffer:
         elif current_size > self.target_size + 2:
             new_size = max(current_size - 2, self.min_size)
         else:
-            return  # No adjustment needed
+            return
 
         self.buffer = deque(list(self.buffer)[-new_size:], maxlen=new_size)
 
@@ -84,43 +76,44 @@ class PositionBuffer:
             "overflow_count": self.overflow_count
         }
 
+# VisualSystem class の変更部分
+
 class VisualSystem:
     def __init__(self, queues):
         logger.info("Initializing VisualSystem")
-        self.initialized = False
-        pygame.init()
         self.config_manager = ConfigManager()
+
+        # for screen
+        pygame.init()
+        self.clock = pygame.time.Clock()
         self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
         self.world_height = self.config_manager.get_trait_value('WORLD_HEIGHT')
         self.background_color = self.config_manager.get_trait_value_as_tuple('BACKGROUND_COLOR')
+        self.screen = pygame.display.set_mode((self.world_width, self.world_height))
         self.target_fps = self.config_manager.get_trait_value('RENDER_FPS')
-        self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
+        self.world_surface = pygame.Surface((self.world_width, self.world_height))
+        self.all_sprites = pygame.sprite.Group()
         
+        # main property
+        self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
+        self.current_agent_count = 0
+        self.creatures: Dict[int, Creature] = {}
+        
+        # queue
         self._eco_to_visual_render = queues['eco_to_visual_render']
         self._eco_to_visual_init = queues['eco_to_visual_init']
         self._eco_to_visual = queues['eco_to_visual']
         
-        self.screen = pygame.display.set_mode((self.world_width, self.world_height))
-        self.creatures: Dict[int, Creature] = {}
-        self.all_sprites = pygame.sprite.Group()
-        
-        self.world_surface = pygame.Surface((self.world_width, self.world_height))
-        self.clock = pygame.time.Clock()
-        self.current_agent_count = 0
-
-        self.position_buffer = PositionBuffer(target_size=30, min_size=5, max_size=40)
-
-        self.timer = Timer('Visual System ')
-        
-        self.last_buffer_print_time = time.time()
-        self.font = pygame.font.Font(None, 36)
-
-        # New attributes for adaptive interpolation
+        # フレーム補間
+        self.position_buffer = NumpyPositionBuffer(target_size=30, min_size=5, max_size=40)
         self.frame_times = deque(maxlen=60)  # Store last 60 frame times
         self.last_physics_update_time = time.time()
         self.physics_update_interval = 0.1  # Initial estimate, will be updated dynamically
         self.physics_update_count = 0
         self.last_physics_update_count_time = time.time()# Assume 30 FPS for physics updates, adjust as needed
+
+        self.timer = Timer('Visual System ')
+        self.last_buffer_print_time = time.time()
 
     def initialize(self):
         logger.info("VisualSystem: Waiting for initialization data...")
@@ -209,8 +202,7 @@ class VisualSystem:
             agent_ids = render_data['agent_ids']
             self.current_agent_count = render_data['current_agent_count']
 
-            new_positions = {agent_ids[i]: pygame.Vector2(positions[i][0], positions[i][1]) 
-                             for i in range(self.current_agent_count)}
+            new_positions = {agent_ids[i]: positions[i] for i in range(self.current_agent_count)}
             current_time = time.time()
             self.physics_update_count += 1
             if current_time - self.last_physics_update_count_time >= 1.0:
@@ -242,7 +234,8 @@ class VisualSystem:
         if next_position:
             for agent_id, position in next_position.items():
                 if agent_id in self.creatures:
-                    self.creatures[agent_id].update(position)
+                    pygame_pos = pygame.Vector2(position[0], position[1])
+                    self.creatures[agent_id].update(pygame_pos)
 
     def draw(self):
         self.world_surface.fill(self.background_color)
