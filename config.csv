@@ -22,7 +22,7 @@ INITIAL_VELOCITY_MIN,-200,-200,-200,-200,-200,-200,-200,-200,-200,-500,0,Minimum
 INITIAL_VELOCITY_MAX,200,200,200,200,200,200,200,200,200,0,500,Maximum initial velocity,
 MAX_FORCE,600,100,100,100,100,100,100,100,100,5,1200,Maximum force applied to agents,
 ,,,,,,,,,,,,,
-INITIAL_AGENT_NUM,,20,20,20,20,20,20,20,20,20,1000,Initial number of agents per species,
+INITIAL_AGENT_NUM,,100,100,100,100,100,100,100,100,20,1000,Initial number of agents per species,
 ,,,,,,,,,,,,,
 ESCAPE_DISTANCE,36,,,,,,,,,5,500,Distance to start escaping,
 ESCAPE_WEIGHT,31,,,,,,,,,0,50,Weight for escape behavior,
