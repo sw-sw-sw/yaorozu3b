@@ -4,6 +4,8 @@ from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 import os
 from datetime import datetime
 
+DRAW_INFO = 15
+logging.addLevelName(DRAW_INFO, "DRAW_INFO")
 class ColoredFormatter(logging.Formatter):
     """カラーコードを使用してログメッセージをフォーマットするクラス"""
     
@@ -48,7 +50,7 @@ class SimulationLogger:
 
         # コンソール出力用のハンドラ
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.INFO)
+        console_handler.setLevel(logging.WARNING)
         console_handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(console_handler)
 
@@ -58,6 +60,8 @@ class SimulationLogger:
 
     def debug(self, message):
         self.logger.debug(message)
+            
+
 
     def info(self, message):
         self.logger.info(message)
