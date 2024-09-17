@@ -61,14 +61,17 @@ class Ecosystem:
             self.add_random_agent()
             
     def add_random_agent(self):
+        add_agents_num = 20
         try:
             agent_ids = self.ad.available_agent_ids()
             if len(agent_ids) > 0:
                 agent_id = random.choice(agent_ids)
                 species = self.ad.species[agent_id]
-                position = self.ad.positions[agent_id] + np.array([1,1])
-                for _ in range(5):
-                    new_agent_id = self.ad.add_agent(species, position + self.rnd_pos())
+                velocity = self.rnd_pos(10)
+                position = self.ad.positions[agent_id]
+                
+                for _ in range(add_agents_num):
+                    new_agent_id = self.ad.add_agent(species, position + velocity, velocity* 5)
                     if new_agent_id is None:
                         break
                 
@@ -90,6 +93,6 @@ class Ecosystem:
         else:
             logger.warning("No agents available for removal")
             
-    def rnd_pos(self):
-        rnd = np.array([random.randint(-30, 30), random.randint(-30, 30)])
+    def rnd_pos(self, radius):
+        rnd = np.array([random.randint(-radius, radius), random.randint(-radius, radius)])
         return rnd

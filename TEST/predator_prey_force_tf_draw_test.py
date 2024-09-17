@@ -25,7 +25,13 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Predator-Prey Forces Test")
 
 # Initialize TensorFlowSimulation
-mock_queues = {'ui_to_tensorflow': None,'box2d_to_tf':None,'eco_to_tf_init':None}
+mock_queues = {'ui_to_tensorflow': None,
+               'box2d_to_tf':None,
+               'eco_to_tf_init':None,
+               'eco_to_tf':None,
+               'tf_to_box2d':None,
+               }
+
 tf_sim = TensorFlowSimulation(mock_queues)  # Pass None as we're not using queues
 
 # Initialize agents

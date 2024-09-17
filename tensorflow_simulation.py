@@ -56,7 +56,7 @@ class TensorFlowSimulation:
             'MAX_FORCE', 'SEPARATION_DISTANCE', 'COHESION_DISTANCE', 'SEPARATION_WEIGHT',
             'COHESION_WEIGHT', 'CENTER_ATTRACTION_WEIGHT', 'ROTATION_STRENGTH',
             'CONFINEMENT_WEIGHT', 'ESCAPE_DISTANCE', 'ESCAPE_WEIGHT', 'CHASE_DISTANCE',
-            'CHASE_WEIGHT'
+            'CHASE_WEIGHT','PREDATOR_PREY_WEIGHT'
         ]
         for param in param_names:
             setattr(self, param.lower(), tf.Variable(
@@ -140,18 +140,19 @@ class TensorFlowSimulation:
         self.update_ui_parameters()
         
     def update_property(self):
-        try:
-            data = self._box2d_to_tf.get_nowait()
-            new_count = tf.convert_to_tensor(data['current_agent_count'], dtype=tf.int32)
-            new_positions = tf.convert_to_tensor(data['positions'], dtype=tf.float32)
-            new_species = tf.convert_to_tensor(data['species'], dtype=tf.int32)
-            mask = tf.range(self.max_agents_num) < new_count
-            mask = tf.reshape(mask, (-1, 1))
-            self.tf_positions.assign(tf.where(mask, new_positions, tf.zeros_like(new_positions)))
-            self.tf_species.assign(tf.where(mask[:, 0], new_species, tf.zeros_like(new_species)))
-            self.tf_current_agent_count.assign(new_count)
-        except Empty:
-            pass
+        while True:
+            try:
+                data = self._box2d_to_tf.get_nowait()
+                new_count = tf.convert_to_tensor(data['current_agent_count'], dtype=tf.int32)
+                new_positions = tf.convert_to_tensor(data['positions'], dtype=tf.float32)
+                new_species = tf.convert_to_tensor(data['species'], dtype=tf.int32)
+                mask = tf.range(self.max_agents_num) < new_count
+                mask = tf.reshape(mask, (-1, 1))
+                self.tf_positions.assign(tf.where(mask, new_positions, tf.zeros_like(new_positions)))
+                self.tf_species.assign(tf.where(mask[:, 0], new_species, tf.zeros_like(new_species)))
+                self.tf_current_agent_count.assign(new_count)
+            except Empty:
+                break
 
     def send_forces_to_box2d(self, np_forces):
         data = {
@@ -197,7 +198,7 @@ class TensorFlowSimulation:
         cohesion = self._cohesion(positions, distances)
         predator_prey = self._predator_prey_forces(positions, distances, species)
         forces = (self.separation_weight * separation +
-                  self.cohesion_weight * cohesion + predator_prey)
+                  self.cohesion_weight * cohesion + predator_prey * self.predator_prey_weight)
         
         return self._limit_magnitude(forces)
 

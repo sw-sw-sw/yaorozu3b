@@ -10,6 +10,7 @@ class AgentsData:
         logger.info("Initializing AgentsData")
         self.max_agents_num = max_agents_num
         self.positions = np.zeros((max_agents_num, 2), dtype=np.float32)
+        self.velocities = np.zeros((max_agents_num, 2), dtype=np.float32)  # New velocity array
         self.species = np.zeros(max_agents_num, dtype=np.int32)
         self.agent_ids = np.full(max_agents_num, -1, dtype=np.int32)
         self.current_agent_count = 0
@@ -26,7 +27,7 @@ class AgentsData:
         self._eco_to_visual_render = queue_dict['eco_to_visual_render']
         logger.info(f"AgentsData initialized with max_agents_num: {max_agents_num}")
         
-    def _add_agent_internal(self, species, position):
+    def _add_agent_internal(self, species, position, velocity=(0, 0)):
         if self.current_agent_count < self.max_agents_num:
             if self.available_ids:
                 agent_id = self.available_ids.pop()
@@ -36,6 +37,8 @@ class AgentsData:
             
             index = self.current_agent_count
             self.positions[index] = np.array(position, dtype=np.float32)
+            self.velocities[index] = np.array(velocity, dtype=np.float32)  # Set initial velocity
+
             self.species[index] = species
             self.agent_ids[index] = agent_id
             self.current_agent_count += 1
@@ -45,27 +48,28 @@ class AgentsData:
         logger.warning("Failed to add agent: maximum capacity reached")
         return None
 
-    def add_agent(self, species, position):
-        agent_id = self._add_agent_internal(species, position)
+    def add_agent(self, species, position, velocity=(0, 0)):
+        agent_id = self._add_agent_internal(species, position, velocity)
         if agent_id is not None:
-            self._notify_agent_add(agent_id, species, position)
+            self._notify_agent_add(agent_id, species, position, velocity)
             logger.info(f"Agent added: id={agent_id}, species={species}, position={position}")
         else:
             logger.error(f"Error: Cannot add agent. Maximum capacity of {self.max_agents_num} reached.")
         return agent_id
 
-    def add_agent_no_notify(self, species, position):
+    def add_agent_no_notify(self, species, position, velocity=(0,0)):
         agent_id = self._add_agent_internal(species, position)
         if agent_id is not None:
             logger.debug(f"Agent added without notification: id={agent_id}, species={species}, position={position}")
         return agent_id
 
-    def _notify_agent_add(self, agent_id, species, position):
+    def _notify_agent_add(self, agent_id, species, position, velocity):
         add_data = {
             'action': 'add',
             'agent_id': agent_id,
             'species': species,
             'position': position.tolist() if isinstance(position, np.ndarray) else list(position),
+            'velocity': velocity.tolist() if isinstance(velocity, np.ndarray) else list(velocity),
         }
         self._eco_to_box2d.put(add_data)
         self._eco_to_visual.put(add_data)
@@ -136,6 +140,7 @@ class AgentsData:
     def send_data_to_box2d_initialize(self):
         data = {
             'positions': self.positions[:self.current_agent_count],
+            'velocities': self.velocities[:self.current_agent_count], 
             'species': self.species[:self.current_agent_count],
             'agent_ids': self.agent_ids[:self.current_agent_count],
             'current_agent_count': self.current_agent_count

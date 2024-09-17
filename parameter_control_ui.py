@@ -56,7 +56,8 @@ class ParameterControlUI:
             'max_force', 'center_attraction_weight',
             'confinement_weight', 'rotation_strength',
             'escape_distance', 'escape_weight',
-            'chase_distance', 'chase_weight'
+            'chase_distance', 'chase_weight',
+            'predator_prey_weight'
         ]
         self.params_folder = 'params'
         self.ensure_params_folder()

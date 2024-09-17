@@ -158,11 +158,11 @@ def run_simulation():
         'eco_to_tf_init': mp.Queue(),
         'eco_to_visual_init': mp.Queue(),
         'eco_to_visual': mp.Queue(),
-        'eco_to_visual_render': mp.Queue(maxsize=1),
-        'eco_to_tf': mp.Queue(maxsize=1),
-        'box2d_to_tf': mp.Queue(maxsize=1),
-        'box2d_to_eco': mp.Queue(maxsize=1),
-        'tf_to_box2d': mp.Queue(maxsize=1),
+        'eco_to_visual_render': mp.Queue(maxsize=10),
+        'eco_to_tf': mp.Queue(maxsize=10),
+        'box2d_to_tf': mp.Queue(maxsize=10),
+        'box2d_to_eco': mp.Queue(maxsize=10),
+        'tf_to_box2d': mp.Queue(maxsize=10),
         'ui_to_tensorflow': mp.Queue()
     }
 

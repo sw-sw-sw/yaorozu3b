@@ -30,6 +30,8 @@ class Box2DSimulation:
 
         # Initialize arrays
         self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
+        self.velocities = np.zeros((self.max_agents_num, 2), dtype=np.float32)
+
         self.species = np.zeros(self.max_agents_num, dtype=np.int32)
         self.agent_ids = np.zeros(self.max_agents_num, dtype=np.int32)
         self.forces = np.zeros((self.max_agents_num, 2), dtype=np.float32)
@@ -43,15 +45,16 @@ class Box2DSimulation:
         init_data = self._eco_to_box2d_init.get()
         self.current_agent_count = init_data['current_agent_count']
         self.positions[:self.current_agent_count] = init_data['positions']
+        self.velocities[:self.current_agent_count] = init_data['velocities']
         self.species[:self.current_agent_count] = init_data['species']
         self.agent_ids[:self.current_agent_count] = init_data['agent_ids']
         
         for i in range(self.current_agent_count):
-            self._create_body(self.agent_ids[i], self.species[i], self.positions[i])
+            self._create_body(self.agent_ids[i], self.species[i], self.positions[i], self.velocities[i])
         
         logger.info(f"Box2DSimulation initialized with {self.current_agent_count} agents")
 
-    def _create_body(self, agent_id, species, position):
+    def _create_body(self, agent_id, species, position, velocity=(0, 0)):
         linear_damping = self.config_manager.get_species_trait_value('DAMPING', species)
         density = self.config_manager.get_species_trait_value('DENSITY', species)
         restitution = self.config_manager.get_species_trait_value('RESTITUTION', species)
@@ -62,7 +65,7 @@ class Box2DSimulation:
         body_def = b2BodyDef(
             type=b2_dynamicBody,
             position=b2Vec2(float(position[0]), float(position[1])),
-            linearVelocity=b2Vec2(0.0, 0.0),
+            linearVelocity=b2Vec2(float(velocity[0]), float(velocity[1])),
             linearDamping=linear_damping
         )
         body = self.world.CreateBody(body_def)
@@ -101,10 +104,12 @@ class Box2DSimulation:
         agent_id = data['agent_id']
         species = data['species']
         position = data['position']
+        velocity = data.get('velocity', (0, 0))
         self._create_body(agent_id, species, position)
         self.current_agent_count += 1
         index = self.current_agent_count - 1
         self.positions[index] = position
+        self.velocities[index] = velocity
         self.species[index] = species
         self.agent_ids[index] = agent_id
         logger.debug(f"Agent {agent_id} added to Box2D simulation. Total agents: {self.current_agent_count}")

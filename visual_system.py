@@ -13,6 +13,7 @@ logger = get_logger()
 
 class PositionBuffer:
     def __init__(self, target_size=10, min_size=5, max_size=20):
+        self.initial_positions = {}
         self.buffer = deque(maxlen=max_size)
         self.target_size = target_size
         self.min_size = min_size
@@ -20,6 +21,13 @@ class PositionBuffer:
         self.current_positions = {}
         self.next_positions = {}
         self.overflow_count = 0
+        
+    def initialize(self, initial_positions):
+        self.initial_positions = initial_positions.copy()
+        self.current_positions = initial_positions.copy()
+        self.next_positions = initial_positions.copy()
+        self.buffer.clear()
+        self.buffer.append(initial_positions)
 
     def update(self, new_positions, interpolation_steps):
         self.current_positions = self.next_positions
@@ -53,6 +61,8 @@ class PositionBuffer:
             self.buffer.append(frame)
 
     def get_next_position(self):
+        if not self.buffer:
+            return self.initial_positions
         return self.buffer.popleft() if self.buffer else None
 
     def _adjust_buffer_size(self):
@@ -77,6 +87,7 @@ class PositionBuffer:
 class VisualSystem:
     def __init__(self, queues):
         logger.info("Initializing VisualSystem")
+        self.initialized = False
         pygame.init()
         self.config_manager = ConfigManager()
         self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
@@ -129,6 +140,11 @@ class VisualSystem:
         logger.debug(f"Received agent_ids: {_agent_ids[:5]}...")
         logger.debug(f"Received species: {_species[:5]}...")
 
+       # Initialize the PositionBuffer with the initial positions
+        initial_positions = {agent_id: pygame.Vector2(pos[0], pos[1]) 
+                             for agent_id, pos in zip(_agent_ids, _positions)}
+        self.position_buffer.initialize(initial_positions)
+        
         # Create creatures and initialize their positions
         for i in range(self.current_agent_count):
             try:
@@ -139,29 +155,12 @@ class VisualSystem:
             except Exception as e:
                 logger.error(f"Error creating creature {i}: {e}")
 
-        # Initialize the PositionBuffer with the initial positions
-        initial_positions = {}
-        for i, agent_id in enumerate(_agent_ids[:self.current_agent_count]):
-            try:
-                pos = _positions[i]
-                if isinstance(pos, (list, tuple)) and len(pos) == 2:
-                    initial_positions[agent_id] = pygame.Vector2(pos[0], pos[1])
-                else:
-                    logger.warning(f"Invalid position format for agent {agent_id}: {pos}")
-                    initial_positions[agent_id] = pygame.Vector2(0, 0)  # デフォルト位置を設定
-            except Exception as e:
-                logger.error(f"Error creating Vector2 for agent {agent_id}: {e}")
-                initial_positions[agent_id] = pygame.Vector2(0, 0)  # エラー時はデフォルト位置を設定
-
-        # Set both current and next positions to the initial positions
-        self.position_buffer.current_positions = initial_positions.copy()
-        self.position_buffer.next_positions = initial_positions.copy()
-        
         # Add the initial frame to the buffer
         self.position_buffer.add_frames([initial_positions])
 
         logger.info(f"VisualSystem initialized with {self.current_agent_count} creatures")
         logger.debug(f"Initial buffer size: {len(self.position_buffer.buffer)}")
+        self.initialized = True
         
     def create_creature(self, agent_id: int, species: int, x: float, y: float):
         creature = Creature(species, pygame.Vector2(x, y))
