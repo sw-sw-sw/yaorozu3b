@@ -2,8 +2,6 @@ import time
 import numpy as np
 import tensorflow as tf
 import multiprocessing as mp
-import threading
-from tensorflow_simulation import TensorFlowSimulation
 from box2d_simulation import Box2DSimulation
 from visual_system import VisualSystem
 from ecosystem import Ecosystem
