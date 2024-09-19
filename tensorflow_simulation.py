@@ -164,8 +164,8 @@ class TensorFlowSimulation:
 
     @tf.function
     def calculate_forces(self):
-        species_forces = self._limit_magnitude(self._species_forces(self.tf_positions, self.tf_species))
-        environment_forces = self._limit_magnitude(self._environment_forces(self.tf_positions))
+        species_forces = self._species_forces(self.tf_positions, self.tf_species)
+        environment_forces = self._environment_forces(self.tf_positions)
         return species_forces + environment_forces
 
     @profile
