@@ -6,17 +6,23 @@ from pygame import Vector2
 from config_manager import ConfigManager, DNASpecies
 
 class Creature(pygame.sprite.Sprite):
-    def __init__(self, species: int, position: Vector2):
+    instances = {}  # クラス変数として辞書を追加
+
+    def __init__(self, agent_id: int, species: int, position: Vector2):
         super().__init__()
+        self.agent_id = agent_id
         self.config_manager = ConfigManager()
         self.dna: DNASpecies = self.config_manager.get_dna_for_species(species)
-        self._pos = position
+        self.position = position
         self._initialize_traits()
         self._initialize_horns()
         self._initialize_shell()
         self._create_surface()
-        self.rect = self.image.get_rect(center=self._pos)
+        self.rect = self.image.get_rect(center=self.position)
         self._original_image = self.image
+        
+        # インスタンスを辞書に追加
+        Creature.instances[agent_id] = self
 
     def _initialize_traits(self):
         self._size = self.dna.get_trait("SIZE")
@@ -86,9 +92,9 @@ class Creature(pygame.sprite.Sprite):
         if self._flash:
             pygame.draw.circle(self.image, (255, 255, 255), center, self._flash_radius)
         
-    def update(self, position: pygame.Vector2 = None):
-        if position is not None:
-            self._pos = position
+    def update(self, new_position=None):
+        if new_position is not None:
+            self.position = new_position
         
         self._rotate += self._rotate_v
         
@@ -100,9 +106,17 @@ class Creature(pygame.sprite.Sprite):
             self._flash = False
             
         self._create_surface()
-        self.rect.center = self._pos
+        self.rect.center = self.position
         self.image = pygame.transform.rotate(self.image, math.degrees(self._rotate))
         self.rect = self.image.get_rect(center=self._pos)
+    @classmethod
+    def get(cls, agent_id):
+        return cls.instances.get(agent_id)
+
+    @classmethod
+    def remove(cls, agent_id):
+        if agent_id in cls.instances:
+            del cls.instances[agent_id]
         
     def get_radius(self):
         return max(self._size / 2, 
