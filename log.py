@@ -50,7 +50,7 @@ class SimulationLogger:
 
         # コンソール出力用のハンドラ
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.WARNING)
+        console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(console_handler)
 

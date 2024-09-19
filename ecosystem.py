@@ -55,23 +55,29 @@ class Ecosystem:
         # transfer box2data and update from box2d data
         self.ad.update()
 
-        self.count += 1
-        if self.count == 200:
-            self.count = 0
-            self.add_random_agent()
+        # self.count += 1
+        # if self.count == 20:
+        #     self.count = 0
+        #     self.remove_random_agents(1)
             
-    def add_random_agent(self):
-        add_agents_num = 20
+        
+        # if self.count == 200:
+        #     self.count = 0
+        #     self.add_random_agent(30)
+        #     pass
+            
+            
+    def add_random_agent(self,num = 1):
         try:
             agent_ids = self.ad.available_agent_ids()
-            if len(agent_ids) > 0:
+            if len(agent_ids) > 10:
                 agent_id = random.choice(agent_ids)
                 species = self.ad.species[agent_id]
-                velocity = self.rnd_pos(10)
                 position = self.ad.positions[agent_id]
                 
-                for _ in range(add_agents_num):
-                    new_agent_id = self.ad.add_agent(species, position + velocity, velocity* 5)
+                for _ in range(num):
+                    velocity = self.rnd_pos(10)
+                    new_agent_id = self.ad.add_agent(species, position + velocity, velocity * 4)
                     if new_agent_id is None:
                         break
                 
@@ -83,6 +89,10 @@ class Ecosystem:
                 logger.warning("No agents available for reproduction")
         except Exception as e:
             logger.exception(f"Failed to add agent: {e}")
+    
+    def remove_random_agents(self, num = 10):
+        for _ in range(num):
+            self.remove_random_agent()
     
     def remove_random_agent(self):
         agent_ids = self.ad.available_agent_ids()

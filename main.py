@@ -2,6 +2,7 @@ import time
 import numpy as np
 import tensorflow as tf
 import multiprocessing as mp
+from tensorflow_simulation import TensorFlowSimulation
 from box2d_simulation import Box2DSimulation
 from visual_system import VisualSystem
 from ecosystem import Ecosystem
@@ -31,7 +32,7 @@ def eco_run(queues, shared_memory, running, initialization_complete, eco_init_do
         try:
             timer.start()
             ecosystem.update()
-            time.sleep(0.005)
+            time.sleep(0.01)
             timer.print_fps(5)
         except Exception as e:
             logger.exception(f"Error in Ecosystem update: {e}")
@@ -84,6 +85,7 @@ def box2d_run(queues, shared_memory, running, initialization_complete, eco_init_
         try:
             timer.start()
             box2d.update()
+            time.sleep(0.01)
             timer.print_fps(5)
         except Exception as e:
             logger.exception(f"Error in Box2D update: {e}")

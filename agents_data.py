@@ -68,8 +68,10 @@ class AgentsData:
             'action': 'add',
             'agent_id': agent_id,
             'species': species,
-            'position': position.tolist() if isinstance(position, np.ndarray) else list(position),
-            'velocity': velocity.tolist() if isinstance(velocity, np.ndarray) else list(velocity),
+            'position': position,
+            'velocity': velocity,
+            'current_agent_count': self.current_agent_count
+
         }
         self._eco_to_box2d.put(add_data)
         self._eco_to_visual.put(add_data)
@@ -112,10 +114,10 @@ class AgentsData:
             if not self._box2d_to_eco.empty():
                 box2d_data = self._box2d_to_eco.get_nowait()
                 self.send_data_to_visual(box2d_data)
+                
                 positions = box2d_data['positions']
                 if len(positions) == self.current_agent_count:
                     self.positions[:self.current_agent_count] = positions
-                    # self.current_agent_count = box2d_data['current_agent_count']
                     logger.debug(f"Updated agent data. Current agent count: {self.current_agent_count}")
                 else:
                     logger.warning(f"Agent count mismatch. Box2D: {len(box2d_data['positions'])}, AgentsData: {self.current_agent_count}")

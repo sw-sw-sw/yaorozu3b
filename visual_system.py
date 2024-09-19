@@ -12,40 +12,55 @@ from collections import deque
 logger = get_logger()
 
 class NumpyPositionBuffer:
-    def __init__(self, target_size=10, min_size=5, max_size=20):
+    def __init__(self, max_agents, target_size=10, min_size=5, max_size=20):
         self.buffer = deque(maxlen=max_size)
         self.target_size = target_size
         self.min_size = min_size
         self.max_size = max_size
-        self.current_positions = {}
-        self.next_positions = {}
+        self.current_positions = np.zeros((max_agents, 2), dtype=np.float32)
+        self.next_positions = np.zeros((max_agents, 2), dtype=np.float32)
+        self.agent_ids = np.full(max_agents, -1, dtype=np.int32)
         self.overflow_count = 0
+        self.last_agent_count = 0
 
-    def initialize(self, initial_positions):
-        self.current_positions = initial_positions
-        self.next_positions = initial_positions.copy()
+    def initialize(self, initial_positions, initial_agent_ids):
+        self.current_positions[:len(initial_positions)] = initial_positions
+        self.next_positions[:len(initial_positions)] = initial_positions
+        self.agent_ids[:len(initial_agent_ids)] = initial_agent_ids
         self.buffer.clear()
-        self.buffer.append(self.current_positions)
+        self.buffer.append(self.current_positions[:len(initial_positions)])
+        self.last_agent_count = len(initial_positions)
 
-    def update(self, new_positions, interpolation_steps):
-        self.current_positions = self.next_positions
-        self.next_positions = new_positions
-        interpolated_frames = self._interpolate_vectorized(interpolation_steps)
+    def update(self, new_positions, new_agent_ids, interpolation_steps, current_agent_count):
+        if current_agent_count != self.last_agent_count:
+            logger.warning(f"Agent count mismatch. Expected: {self.last_agent_count}, Got: {current_agent_count}. Resetting buffer.")
+            self.current_positions[:current_agent_count] = new_positions
+            self.next_positions[:current_agent_count] = new_positions
+            self.agent_ids[:current_agent_count] = new_agent_ids
+            self.buffer.clear()
+            self.buffer.append(self.current_positions[:current_agent_count])
+            self.last_agent_count = current_agent_count
+            self.get_stats()
+
+        self.current_positions[:current_agent_count] = self.next_positions[:current_agent_count]
+        self.next_positions[:current_agent_count] = new_positions
+        self.agent_ids[:current_agent_count] = new_agent_ids
+
+        interpolated_frames = self._interpolate_vectorized(interpolation_steps, current_agent_count)
         self.add_frames(interpolated_frames)
         self._adjust_buffer_size()
+        
+        self.last_agent_count = current_agent_count
         return self.get_stats()
 
-    def _interpolate_vectorized(self, steps):
-        agent_ids = list(self.current_positions.keys())
-        current_array = np.array([self.current_positions[aid] for aid in agent_ids])
-        next_array = np.array([self.next_positions[aid] for aid in agent_ids])
-        
+    def _interpolate_vectorized(self, steps, current_agent_count):
+        current_array = self.current_positions[:current_agent_count]
+        next_array = self.next_positions[:current_agent_count]
         t_values = np.linspace(0, 1, steps+1)[1:]
         interpolated_arrays = current_array[np.newaxis, :, :] + \
                               (next_array - current_array)[np.newaxis, :, :] * t_values[:, np.newaxis, np.newaxis]
         
-        return [{aid: interpolated_arrays[i, j] for j, aid in enumerate(agent_ids)} 
-                for i in range(steps)]
+        return [interpolated_arrays[i] for i in range(steps)]
 
     def add_frames(self, frames):
         for frame in frames:
@@ -55,7 +70,7 @@ class NumpyPositionBuffer:
             self.buffer.append(frame)
 
     def get_next_position(self):
-        return self.buffer.popleft() if self.buffer else self.current_positions
+        return self.buffer.popleft() if self.buffer else self.current_positions[:self.last_agent_count]
 
     def _adjust_buffer_size(self):
         current_size = len(self.buffer)
@@ -75,9 +90,7 @@ class NumpyPositionBuffer:
             "max_size": self.max_size,
             "overflow_count": self.overflow_count
         }
-
-# VisualSystem class の変更部分
-
+        
 class VisualSystem:
     def __init__(self, queues):
         logger.info("Initializing VisualSystem")
@@ -97,6 +110,9 @@ class VisualSystem:
         # main property
         self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
         self.current_agent_count = 0
+        self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
+        self.agent_ids = np.full(self.max_agents_num, -1, dtype=np.int32)
+        self.species = np.zeros(self.max_agents_num, dtype=np.int32)
         self.creatures: Dict[int, Creature] = {}
         
         # queue
@@ -105,7 +121,7 @@ class VisualSystem:
         self._eco_to_visual = queues['eco_to_visual']
         
         # フレーム補間
-        self.position_buffer = NumpyPositionBuffer(target_size=30, min_size=5, max_size=40)
+        self.position_buffer = NumpyPositionBuffer(self.max_agents_num, target_size=30, min_size=5, max_size=40)        
         self.frame_times = deque(maxlen=60)  # Store last 60 frame times
         self.last_physics_update_time = time.time()
         self.physics_update_interval = 0.1  # Initial estimate, will be updated dynamically
@@ -124,33 +140,33 @@ class VisualSystem:
             except Empty:
                 logger.warning("VisualSystem: No initialization data received, retrying...")
                 continue
-        _positions = init_data['positions']
-        _agent_ids = init_data['agent_ids']
-        _species = init_data['species']
+        self.current_agent_count = init_data['current_agent_count']
+        self.positions[:self.current_agent_count] = init_data['positions']
+        self.agent_ids[:self.current_agent_count] = init_data['agent_ids']
+        self.species[:self.current_agent_count] = init_data['species']
         self.current_agent_count = init_data['current_agent_count']
 
-        logger.debug(f"Received positions: {_positions[:5]}...")
-        logger.debug(f"Received agent_ids: {_agent_ids[:5]}...")
-        logger.debug(f"Received species: {_species[:5]}...")
+        logger.debug(f"Received positions: {self.positions[:5]}...")
+        logger.debug(f"Received agent_ids: {self.agent_ids[:5]}...")
+        logger.debug(f"Received species: {self.species[:5]}...")
 
-       # Initialize the PositionBuffer with the initial positions
-        initial_positions = {agent_id: pygame.Vector2(pos[0], pos[1]) 
-                             for agent_id, pos in zip(_agent_ids, _positions)}
-        self.position_buffer.initialize(initial_positions)
+   
+        self.position_buffer.initialize(self.positions, self.agent_ids)
         
         # Create creatures and initialize their positions
         for i in range(self.current_agent_count):
             try:
-                x, y = _positions[i]
-                species = _species[i]
-                agent_id = _agent_ids[i]
+                x, y = self.positions[i]
+                species = self.species[i]
+                agent_id = self.agent_ids[i]
                 self.create_creature(agent_id, species, x, y)
             except Exception as e:
                 logger.error(f"Error creating creature {i}: {e}")
 
         # Add the initial frame to the buffer
-        self.position_buffer.add_frames([initial_positions])
-
+        self.position_buffer.add_frames([self.positions])
+        self.last_agent_count = self.current_agent_count
+        
         logger.info(f"VisualSystem initialized with {self.current_agent_count} creatures")
         logger.debug(f"Initial buffer size: {len(self.position_buffer.buffer)}")
         self.initialized = True
@@ -201,8 +217,9 @@ class VisualSystem:
             positions = render_data['positions']
             agent_ids = render_data['agent_ids']
             self.current_agent_count = render_data['current_agent_count']
-
-            new_positions = {agent_ids[i]: positions[i] for i in range(self.current_agent_count)}
+            self.positions[:self.current_agent_count] = positions
+            self.agent_ids[:self.current_agent_count] = agent_ids
+            #演算フレームレート(physics_update_interval)のを計算
             current_time = time.time()
             self.physics_update_count += 1
             if current_time - self.last_physics_update_count_time >= 1.0:
@@ -210,7 +227,7 @@ class VisualSystem:
                 self.physics_update_count = 0
                 self.last_physics_update_count_time = current_time
 
-            # Calculate interpolation steps based on physics update rate and render frame rate
+            #描画フレームレート(avg_frame_time)の計算
             avg_frame_time = sum(self.frame_times) / len(self.frame_times) if self.frame_times else (1.0 / self.target_fps)
             base_interpolation_steps = max(1, int(self.physics_update_interval / avg_frame_time))
             
@@ -223,7 +240,8 @@ class VisualSystem:
                 interpolation_steps += 1
             elif current_buffer_size > self.position_buffer.target_size:
                 interpolation_steps = max(1, interpolation_steps - 1)
-            buffer_stats = self.position_buffer.update(new_positions, interpolation_steps)
+                
+            buffer_stats = self.position_buffer.update(positions, agent_ids, interpolation_steps, self.current_agent_count)
             logger.info(f"Buffer stats: {buffer_stats}, Interpolation steps: {interpolation_steps}")
 
         except Empty:
@@ -231,11 +249,10 @@ class VisualSystem:
 
     def update_creatures(self):
         next_position = self.position_buffer.get_next_position()
-        if next_position:
-            for agent_id, position in next_position.items():
-                if agent_id in self.creatures:
-                    pygame_pos = pygame.Vector2(position[0], position[1])
-                    self.creatures[agent_id].update(pygame_pos)
+        for agent_id, position in zip(self.agent_ids, next_position):
+            if agent_id in self.creatures:
+                pygame_pos = pygame.Vector2(position[0], position[1])
+                self.creatures[agent_id].update(pygame_pos)
 
     def draw(self):
         self.world_surface.fill(self.background_color)
@@ -250,19 +267,34 @@ class VisualSystem:
     def _handle_agent_added(self, data):
         agent_id = data['agent_id']
         species = data['species']
-        position = pygame.Vector2(data['position'])
-        self.create_creature(agent_id, species, position.x, position.y)
+        position = data['position']
+        self.create_creature(agent_id, species, position[0], position[1])
+        
+        index = self.current_agent_count
+        print('add agent to visual index =',index)
+        self.positions[index] = np.array(position, dtype=np.float32)
+        self.agent_ids[index] = agent_id
+        self.species[index] = species
         self.current_agent_count += 1
+
         logger.debug(f"Agent {agent_id} added. Total agents: {self.current_agent_count}")
 
     def _handle_agent_removed(self, data):
         agent_id = data['agent_id']
         if agent_id in self.creatures:
             self.remove_creature(agent_id)
+                        # Update numpy arrays
+            index = np.where(self.agent_ids == agent_id)[0][0]
+            self.agent_ids[index:-1] = self.agent_ids[index+1:]
+            self.species[index:-1] = self.species[index+1:]
+            self.agent_ids[self.current_agent_count-1] = -1
+            self.species[self.current_agent_count-1] = 0
             self.current_agent_count -= 1
+            
             logger.debug(f"Agent {agent_id} removed. Total agents: {self.current_agent_count}")
         else:
             logger.warning(f"Attempted to remove non-existent agent {agent_id}")
+        
 
     def print_buffer_size(self):
         current_time = time.time()
