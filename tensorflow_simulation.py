@@ -166,6 +166,9 @@ class TensorFlowSimulation:
     def calculate_forces(self):
         species_forces = self._species_forces(self.tf_positions, self.tf_species)
         environment_forces = self._environment_forces(self.tf_positions)
+        
+        tf.print("Max species force:", tf.reduce_max(tf.abs(species_forces)))
+        tf.print("Max environment force:", tf.reduce_max(tf.abs(environment_forces)))
         return species_forces + environment_forces
 
     @profile
@@ -198,7 +201,8 @@ class TensorFlowSimulation:
         cohesion = self._cohesion(positions, distances)
         predator_prey = self._predator_prey_forces(positions, distances, species)
         forces = (self.separation_weight * separation +
-                  self.cohesion_weight * cohesion + predator_prey * self.predator_prey_weight)
+                  self.cohesion_weight * cohesion + 
+                  self.predator_prey_weight * predator_prey)
         
         return self._limit_magnitude(forces)
 

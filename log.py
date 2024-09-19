@@ -29,7 +29,7 @@ class SimulationLogger:
             os.makedirs(self.log_dir)
         
         self.logger = logging.getLogger('SimulationLogger')
-        self.logger.setLevel(logging.DEBUG)  # 最低レベルをDEBUGに設定
+        self.logger.setLevel(logging.NOTSET)  # 最低レベルをDEBUGに設定
 
         self.setup_handlers()
 
@@ -37,20 +37,20 @@ class SimulationLogger:
         # メインログファイルのハンドラ
         main_log_path = os.path.join(self.log_dir, 'simulation.log')
         main_file_handler = RotatingFileHandler(main_log_path, maxBytes=10*1024*1024, backupCount=5)
-        main_file_handler.setLevel(logging.WARNING)
+        main_file_handler.setLevel(logging.NOTSET)
         main_file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(main_file_handler)
 
         # エラーログファイルのハンドラ
         error_log_path = os.path.join(self.log_dir, 'error.log')
         error_file_handler = TimedRotatingFileHandler(error_log_path, when='midnight', interval=1, backupCount=7)
-        error_file_handler.setLevel(logging.WARNING)  # WARNING以上のみ
+        error_file_handler.setLevel(logging.NOTSET)  # WARNING以上のみ
         error_file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(error_file_handler)
 
         # コンソール出力用のハンドラ
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.WARNING)
+        console_handler.setLevel(logging.NOTSET)
         console_handler.setFormatter(ColoredFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(console_handler)
 

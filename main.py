@@ -85,7 +85,7 @@ def box2d_run(queues, shared_memory, running, initialization_complete, eco_init_
         try:
             timer.start()
             box2d.update()
-            time.sleep(0.01)
+            # time.sleep(0.1)
             timer.print_fps(5)
         except Exception as e:
             logger.exception(f"Error in Box2D update: {e}")
@@ -113,7 +113,7 @@ def visual_system_run(queues, shared_memory, running, initialization_complete, e
             timer.start()
             visual_system.update()
             timer.print_fps(5)
-            time.sleep(0.001)
+            # time.sleep(0.001)
         except Exception as e:
             logger.exception(f"Error in Visual System update: {e}")
             running.value = False

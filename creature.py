@@ -8,6 +8,7 @@ from config_manager import ConfigManager, DNASpecies
 class Creature(pygame.sprite.Sprite):
 
     def __init__(self, species: int, position: Vector2):
+        super().__init__() 
         self.config_manager = ConfigManager()
         self.dna: DNASpecies = self.config_manager.get_dna_for_species(species)
         self.position = position

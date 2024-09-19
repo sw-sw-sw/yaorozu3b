@@ -11,6 +11,7 @@ from collections import deque
 
 logger = get_logger()
 
+        
 class NumpyPositionBuffer:
     def __init__(self, max_agents, target_size=10, min_size=5, max_size=20):
         self.buffer = deque(maxlen=max_size)
@@ -37,7 +38,7 @@ class NumpyPositionBuffer:
             self.current_positions[:current_agent_count] = new_positions
             self.next_positions[:current_agent_count] = new_positions
             self.agent_ids[:current_agent_count] = new_agent_ids
-            self.buffer.clear()
+            # self.buffer.clear()
             self.buffer.append(self.current_positions[:current_agent_count])
             self.last_agent_count = current_agent_count
             self.get_stats()
@@ -62,7 +63,6 @@ class NumpyPositionBuffer:
         correction_value = 2  # This can be adjusted based on your needs
         interpolation_steps = base_interpolation_steps + correction_value
 
-        # Adjust interpolation steps based on current buffer size
         current_buffer_size = len(self.buffer)
         if current_buffer_size < self.target_size:
             interpolation_steps += 1
@@ -71,7 +71,6 @@ class NumpyPositionBuffer:
 
         interpolated_frames = self._interpolate_vectorized(interpolation_steps, current_agent_count)
         self.add_frames(interpolated_frames)
-        self._adjust_buffer_size()
         
         self.last_agent_count = current_agent_count
         
@@ -98,16 +97,16 @@ class NumpyPositionBuffer:
     def get_next_position(self):
         return self.buffer.popleft() if self.buffer else self.current_positions[:self.last_agent_count]
 
-    def _adjust_buffer_size(self):
-        current_size = len(self.buffer)
-        if current_size < self.target_size - 2:
-            new_size = min(current_size + 2, self.max_size)
-        elif current_size > self.target_size + 2:
-            new_size = max(current_size - 2, self.min_size)
-        else:
-            return
+    # def _adjust_buffer_size(self):
+    #     current_size = len(self.buffer)
+    #     if current_size < self.target_size - 3:
+    #         new_size = min(current_size + 3, self.max_size)
+    #     elif current_size > self.target_size + 3:
+    #         new_size = max(current_size - 3, self.min_size)
+    #     else:
+    #         return
 
-        self.buffer = deque(list(self.buffer)[-new_size:], maxlen=new_size)
+    #     self.buffer = deque(list(self.buffer)[-new_size:], maxlen=new_size)
 
     def get_stats(self):
         return {
@@ -290,7 +289,6 @@ class VisualSystem:
         self.create_creature(agent_id, species, position[0], position[1])
         
         index = self.current_agent_count
-        print('add agent to visual index =',index)
         self.positions[index] = np.array(position, dtype=np.float32)
         self.agent_ids[index] = agent_id
         self.species[index] = species
@@ -324,6 +322,7 @@ class VisualSystem:
             logger.info(f"Physics update rate: {1.0/self.physics_update_interval:.2f} FPS")
             self.last_buffer_print_time = current_time
 
-    def cleanup(self):
+    def cleanup(self):        
         pygame.quit()
         logger.info("VisualSystem cleaned up")
+        

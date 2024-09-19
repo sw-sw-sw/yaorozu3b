@@ -120,8 +120,8 @@ class AgentsData:
                     self.positions[:self.current_agent_count] = positions
                     logger.debug(f"Updated agent data. Current agent count: {self.current_agent_count}")
                 else:
-                    logger.warning(f"Agent count mismatch. Box2D: {len(box2d_data['positions'])}, AgentsData: {self.current_agent_count}")
-                    
+                    # logger.warning(f"Agent count mismatch. Box2D: {len(box2d_data['positions'])}, AgentsData: {self.current_agent_count}")
+                    pass
         except Exception as e:
             logger.exception(f"Error in Ecosystem update: {e}")
 

@@ -35,7 +35,7 @@ class Ecosystem:
         for species in range(1, 9):
             initial_agent_num = self.config_manager.get_species_trait_value('INITIAL_AGENT_NUM', species)
             center_x, center_y = octagon_centers[species - 1]
-            circle_radius = self.world_width / 4
+            circle_radius = self.world_width / 6
 
             # 正規分布を使用して円内にランダムな位置を生成
             r = np.random.normal(0, circle_radius / 2, initial_agent_num)
@@ -55,16 +55,18 @@ class Ecosystem:
         # transfer box2data and update from box2d data
         self.ad.update()
 
-        # self.count += 1
+        self.count += 1
         # if self.count == 20:
         #     self.count = 0
         #     self.remove_random_agents(1)
             
         
-        # if self.count == 200:
-        #     self.count = 0
-        #     self.add_random_agent(30)
-        #     pass
+        if self.count == 5:
+            self.count = 0
+            self.add_random_agent(1)
+        if self.count == 10:
+            self.count = 0
+            self.add_random_agent(2)
             
             
     def add_random_agent(self,num = 1):
@@ -76,10 +78,12 @@ class Ecosystem:
                 position = self.ad.positions[agent_id]
                 
                 for _ in range(num):
-                    velocity = self.rnd_pos(10)
-                    new_agent_id = self.ad.add_agent(species, position + velocity, velocity * 4)
+                    velocity = self.rnd_pos(5)
+                    new_agent_id = self.ad.add_agent(species, position + velocity, velocity)
+                    # time.sleep(0.001)
                     if new_agent_id is None:
                         break
+                   
                 
                 if new_agent_id is not None:
                     logger.info(f"Added new agent with ID: {new_agent_id}")

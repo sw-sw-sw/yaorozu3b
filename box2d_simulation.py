@@ -144,7 +144,7 @@ class Box2DSimulation:
             pass
                     
     def step(self):
-        self.world.Step(self.dt, 12, 3)
+        self.world.Step(self.dt, 6, 3)
 
     def update_positions(self):
         for i, agent_id in enumerate(self.agent_ids[:self.current_agent_count]):
