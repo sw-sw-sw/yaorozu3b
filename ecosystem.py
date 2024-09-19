@@ -35,7 +35,7 @@ class Ecosystem:
         for species in range(1, 9):
             initial_agent_num = self.config_manager.get_species_trait_value('INITIAL_AGENT_NUM', species)
             center_x, center_y = octagon_centers[species - 1]
-            circle_radius = self.world_width / 6
+            circle_radius = self.world_width / 4
 
             # 正規分布を使用して円内にランダムな位置を生成
             r = np.random.normal(0, circle_radius / 2, initial_agent_num)

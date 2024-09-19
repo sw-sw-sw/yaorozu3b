@@ -53,6 +53,32 @@ class NumpyPositionBuffer:
         self.last_agent_count = current_agent_count
         return self.get_stats()
 
+    def update_with_physics_data(self, positions, agent_ids, current_agent_count, physics_update_interval, avg_frame_time):
+        self.current_positions[:current_agent_count] = self.next_positions[:current_agent_count]
+        self.next_positions[:current_agent_count] = positions
+        self.agent_ids[:current_agent_count] = agent_ids
+
+        base_interpolation_steps = max(1, int(physics_update_interval / avg_frame_time))
+        correction_value = 2  # This can be adjusted based on your needs
+        interpolation_steps = base_interpolation_steps + correction_value
+
+        # Adjust interpolation steps based on current buffer size
+        current_buffer_size = len(self.buffer)
+        if current_buffer_size < self.target_size:
+            interpolation_steps += 1
+        elif current_buffer_size > self.target_size:
+            interpolation_steps = max(1, interpolation_steps - 1)
+
+        interpolated_frames = self._interpolate_vectorized(interpolation_steps, current_agent_count)
+        self.add_frames(interpolated_frames)
+        self._adjust_buffer_size()
+        
+        self.last_agent_count = current_agent_count
+        
+        logger.info(f"Buffer stats: {self.get_stats()}, Interpolation steps: {interpolation_steps}")
+        
+        return 
+    
     def _interpolate_vectorized(self, steps, current_agent_count):
         current_array = self.current_positions[:current_agent_count]
         next_array = self.next_positions[:current_agent_count]
@@ -219,6 +245,7 @@ class VisualSystem:
             self.current_agent_count = render_data['current_agent_count']
             self.positions[:self.current_agent_count] = positions
             self.agent_ids[:self.current_agent_count] = agent_ids
+            
             #演算フレームレート(physics_update_interval)のを計算
             current_time = time.time()
             self.physics_update_count += 1
@@ -229,20 +256,12 @@ class VisualSystem:
 
             #描画フレームレート(avg_frame_time)の計算
             avg_frame_time = sum(self.frame_times) / len(self.frame_times) if self.frame_times else (1.0 / self.target_fps)
-            base_interpolation_steps = max(1, int(self.physics_update_interval / avg_frame_time))
             
-            correction_value = 2  # This can be adjusted based on your needs
-            interpolation_steps = base_interpolation_steps + correction_value
-
-            # Adjust interpolation steps based on current buffer size
-            current_buffer_size = len(self.position_buffer.buffer)
-            if current_buffer_size < self.position_buffer.target_size:
-                interpolation_steps += 1
-            elif current_buffer_size > self.position_buffer.target_size:
-                interpolation_steps = max(1, interpolation_steps - 1)
-                
-            buffer_stats = self.position_buffer.update(positions, agent_ids, interpolation_steps, self.current_agent_count)
-            logger.info(f"Buffer stats: {buffer_stats}, Interpolation steps: {interpolation_steps}")
+            self.position_buffer.update_with_physics_data(
+                positions, agent_ids, self.current_agent_count, 
+                self.physics_update_interval, avg_frame_time
+            )
+            
 
         except Empty:
             pass
