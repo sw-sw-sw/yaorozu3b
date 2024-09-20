@@ -6,7 +6,7 @@ from config_manager import ConfigManager
 from log import get_logger
 from queue import Empty
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 class Box2DSimulation:
     def __init__(self, queues):

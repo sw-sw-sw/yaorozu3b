@@ -38,7 +38,7 @@ class Timer:
     def print_lap_fps(self,interval_time):
         self.current_time = time.time() 
         if self.current_time - self.last_time >= interval_time:
-            lap_fps = 1 / self.calculate_time()
+            lap_fps = 1 / self.calculate_time() 
             print(self.name + " Lap FPS:", f"{lap_fps:4.2f}")
             self.last_time = self.current_time
         return

@@ -114,8 +114,7 @@ class TensorFlowSimulation:
     def clear_profiling_results(self):
         self.profiling_results.clear()
         
-    # ---------------- Main -----------------------
-    
+    # ---------------- property update -----------------------
     def initialize(self):
         logger.info("TensorFlowSimulation is initializing")
 
@@ -133,11 +132,33 @@ class TensorFlowSimulation:
         
         logger.info("TensorFlowSimulation initialized successfully")
 
+    # def update(self):
+    #     self.update_property()
+    #     forces = self.calculate_forces()
+    #     self.send_forces_to_box2d(forces.numpy()[:])
+    #     self.update_ui_parameters()
+    
+    # for stats
+    # https://claude.ai/chat/2c661d89-9109-4313-b8d7-b1868086f69e
+    
     def update(self):
-        self.update_property()
-        forces = self.calculate_forces()
-        self.send_forces_to_box2d(forces.numpy()[:])
-        self.update_ui_parameters()
+        # ... (その他の更新処理)
+
+        forces, force_info = self.calculate_forces()
+        
+        # 力の適用処理
+        self.apply_forces(forces)
+
+        # 処理時間と統計情報のログ記録
+        logger.info(f"Total force calculation time: {force_info['total_time']:.6f} seconds")
+        logger.info(f"Separation calculation time: {force_info['separation_time']:.6f} seconds")
+        logger.info(f"Cohesion calculation time: {force_info['cohesion_time']:.6f} seconds")
+        logger.info(f"Predator-prey calculation time: {force_info['predator_prey_time']:.6f} seconds")
+
+        for force_name, stats in force_info['force_stats'].items():
+            logger.info(f"{force_name} force statistics:")
+            for stat_name, value in stats.items():
+                logger.info(f"  {stat_name}: {value:.4f}")
                 
     def update_property(self):
         while True:
@@ -163,7 +184,10 @@ class TensorFlowSimulation:
         logger.debug(f"Sent forces to Box2D for {data['current_agent_count']} agents")
 
     @tf.function
-    def calculate_forces(self):
+    def calculate_forces_with_statistics(self):
+        # 時間計測の開始
+        start_time = tf.timestamp()
+
         to_center = self.world_center - self.tf_positions
         distances = tf.norm(to_center, axis=1, keepdims=True)
         normalized_to_center = to_center / (distances + 1e-5)
@@ -173,25 +197,108 @@ class TensorFlowSimulation:
         
         # Circular confinement (only applied outside the world radius)
         outside_circle = tf.cast(distances > self.world_radius, tf.float32)
-        confinement_force = outside_circle  * (distances - self.world_radius) * normalized_to_center
+        confinement_force = outside_circle * (distances - self.world_radius) * normalized_to_center
         
         # Create perpendicular vector for rotation (counter-clockwise)
         rotation_force = tf.stack([-to_center[:, 1], to_center[:, 0]], axis=1)
         rotation_force = tf.nn.l2_normalize(rotation_force, axis=1)
         
+        # 各力の計算時間を測定
+        separation_start = tf.timestamp()
         distances = self._calculate_distances(self.tf_positions)
         separation = self._separation(self.tf_positions, distances)
+        separation_time = tf.timestamp() - separation_start
+
+        cohesion_start = tf.timestamp()
         cohesion = self._cohesion(self.tf_positions, distances)
+        cohesion_time = tf.timestamp() - cohesion_start
+
+        predator_prey_start = tf.timestamp()
         predator_prey = self._predator_prey_forces(self.tf_positions, distances, self.tf_species)
+        predator_prey_time = tf.timestamp() - predator_prey_start
         
-        forces = (self.separation_weight * separation * 1.0 +
-            self.cohesion_weight * cohesion * 0.35 + 
-            self.predator_prey_weight * predator_prey * 0.46 +
-            center_force * self.center_attraction_weight * 12.8 +
-            confinement_force * self.confinement_weight * 0.056 +
-            rotation_force * self.rotation_strength * 12.8)  
+        # 各力の統計情報を計算
+        force_stats = self._calculate_force_statistics({
+            'separation': separation,
+            'cohesion': cohesion,
+            'predator_prey': predator_prey,
+            'center_force': center_force,
+            'confinement_force': confinement_force,
+            'rotation_force': rotation_force
+        })
+
+        forces = (self.separation_weight * separation +
+                  self.cohesion_weight * cohesion + 
+                  self.predator_prey_weight * predator_prey +
+                  center_force * self.center_attraction_weight +
+                  confinement_force * self.confinement_weight +
+                  rotation_force * self.rotation_strength)  
         
-        return forces
+        limited_forces = self._limit_magnitude(forces)
+
+        # 全体の処理時間を計算
+        total_time = tf.timestamp() - start_time
+
+        return limited_forces, {
+            'total_time': total_time,
+            'separation_time': separation_time,
+            'cohesion_time': cohesion_time,
+            'predator_prey_time': predator_prey_time,
+            'force_stats': force_stats
+        }
+
+    def _calculate_force_statistics(self, forces):
+        stats = {}
+        for force_name, force in forces.items():
+            abs_force = tf.abs(force)
+            max_abs = tf.reduce_max(abs_force)
+            rms = tf.sqrt(tf.reduce_mean(tf.square(force)))
+            mean_abs = tf.reduce_mean(abs_force)
+            
+            # 95パーセンタイルの近似計算
+            sorted_force = tf.sort(tf.reshape(abs_force, [-1]))
+            index = tf.cast(tf.round(0.95 * tf.cast(tf.size(sorted_force), tf.float32)), tf.int32)
+            percentile_95 = sorted_force[index]
+            
+            stats[force_name] = {
+                'max_abs': max_abs,
+                'rms': rms,
+                'mean_abs': mean_abs,
+                'percentile_95': percentile_95
+            }
+        
+        return stats
+
+    # @tf.function
+    # def calculate_forces(self):
+    #     to_center = self.world_center - self.tf_positions
+    #     distances = tf.norm(to_center, axis=1, keepdims=True)
+    #     normalized_to_center = to_center / (distances + 1e-5)
+        
+    #     # Center attraction (always applied)
+    #     center_force = normalized_to_center
+        
+    #     # Circular confinement (only applied outside the world radius)
+    #     outside_circle = tf.cast(distances > self.world_radius, tf.float32)
+    #     confinement_force = outside_circle  * (distances - self.world_radius) * normalized_to_center
+        
+    #     # Create perpendicular vector for rotation (counter-clockwise)
+    #     rotation_force = tf.stack([-to_center[:, 1], to_center[:, 0]], axis=1)
+    #     rotation_force = tf.nn.l2_normalize(rotation_force, axis=1)
+        
+    #     distances = self._calculate_distances(self.tf_positions)
+    #     separation = self._separation(self.tf_positions, distances)
+    #     cohesion = self._cohesion(self.tf_positions, distances)
+    #     predator_prey = self._predator_prey_forces(self.tf_positions, distances, self.tf_species)
+        
+    #     forces = (self.separation_weight * separation * 1.0 +
+    #         self.cohesion_weight * cohesion * 0.35 + 
+    #         self.predator_prey_weight * predator_prey * 0.46 +
+    #         center_force * self.center_attraction_weight * 12.8 +
+    #         confinement_force * self.confinement_weight * 0.056 +
+    #         rotation_force * self.rotation_strength * 12.8)  
+        
+    #     return self._limit_magnitude(forces)
     
     @profile
     @tf.function

@@ -3,7 +3,7 @@ from queue import Empty
 from log import get_logger
 import time
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 class AgentsData:
     def __init__(self, max_agents_num, queue_dict):

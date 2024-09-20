@@ -15,10 +15,13 @@ class Creature(pygame.sprite.Sprite):
         self._initialize_traits()
         self._initialize_horns()
         self._initialize_shell()
+        self.surface_size = self.get_radius() * 2
+        self.center = Vector2(self.surface_size / 2, self.surface_size / 2)
+        self.image = pygame.Surface((self.surface_size, self.surface_size), pygame.SRCALPHA)
+        self._create_base_surface()
         self._create_surface()
         self.rect = self.image.get_rect(center=self.position)
-        self._original_image = self.image
-        
+
 
     def _initialize_traits(self):
         self._size = self.dna.get_trait("SIZE")
@@ -30,7 +33,7 @@ class Creature(pygame.sprite.Sprite):
         self._color = self._get_color_from_dna()
         self._rotate = 0
         self._rotate_v = self.dna.get_trait("SPEED") * (random.random() - 0.5) * 5
-        
+        self._rotate_count = 0
         self._flash = False
         self._flash_count = 0
         self._flash_cycle = self._initialize_flash_interval()
@@ -59,35 +62,34 @@ class Creature(pygame.sprite.Sprite):
                 self._shell.append(Vector2(x, y))
 
     def _initialize_flash_interval(self):
-        interval = random.randint(100, 200)
         return random.randint(100, 200)  # Random cycle for direction change
     
     def _create_surface(self):
-        surface_size = self.get_radius() * 2
-        self.image = pygame.Surface((surface_size, surface_size), pygame.SRCALPHA)
-        center = Vector2(surface_size / 2, surface_size / 2)
+        self.image = self.base_image.copy()
+            # Draw flash circle if _flash is True
+        if self._flash:
+            pygame.draw.circle(self.image, (255, 255, 255), self.center, self._flash_radius)
         
+    def _create_base_surface(self):
+        self.base_image = pygame.Surface((self.surface_size, self.surface_size), pygame.SRCALPHA)
 
-        # Draw core
-        pygame.draw.circle(self.image, self._color, center, self._size / 2, 1)
+       # Draw core
+        pygame.draw.circle(self.base_image, self._color, self.center, self._size / 2, 1)
         
         # Draw horns
         if self._horn_num > 0:
             for i in range(self._horn_num):
-                start = center + self._horn_pos_in[i]
-                end = center + self._horn_pos_out[i]
-                pygame.draw.line(self.image, self._color, start, end, int(self._horn_width))
+                start = self.center + self._horn_pos_in[i]
+                end = self.center + self._horn_pos_out[i]
+                pygame.draw.line(self.base_image, self._color, start, end, int(self._horn_width))
 
         # Draw shell
         if self._shell_size > 0:
             for point in self._shell:
-                pos = center + point
-                pygame.draw.circle(self.image, self._color, pos, self._shell_point_size)
+                pos = self.center + point
+                pygame.draw.circle(self.base_image, self._color, pos, self._shell_point_size)
 
-        # Draw flash circle if _flash is True
-        if self._flash:
-            pygame.draw.circle(self.image, (255, 255, 255), center, self._flash_radius)
-        
+
     def update(self, new_position=None):
         if new_position is not None:
             self.position = new_position
@@ -100,12 +102,15 @@ class Creature(pygame.sprite.Sprite):
             self._flash_count = 0
         else:
             self._flash = False
-            
+
         self._create_surface()
         self.rect.center = self.position
         self.image = pygame.transform.rotate(self.image, math.degrees(self._rotate))
-        self.rect = self.image.get_rect(center=self.position)
         
+        if self._rotate_count % 5 == 0:
+            self.rect = self.image.get_rect(center=self.position)
+            self._rotate_count = 0
+            
     def get_radius(self):
         return max(self._size / 2, 
                    self._size * self._shell_size / 2 + self._shell_point_size + 2, 

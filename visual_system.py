@@ -1,4 +1,5 @@
 import pygame
+from pygame import Vector2
 import numpy as np
 from config_manager import ConfigManager
 from creature import Creature
@@ -9,11 +10,11 @@ from queue import Empty
 from log import get_logger
 from collections import deque
 
-logger = get_logger()
 
         
 class NumpyPositionBuffer:
     def __init__(self, max_agents, target_size=10, min_size=5, max_size=20):
+        self.logger = get_logger(self.__class__.__name__)
         self.buffer = deque(maxlen=max_size)
         self.target_size = target_size
         self.min_size = min_size
@@ -34,7 +35,7 @@ class NumpyPositionBuffer:
 
     def update(self, new_positions, new_agent_ids, interpolation_steps, current_agent_count):
         if current_agent_count != self.last_agent_count:
-            logger.warning(f"Agent count mismatch. Expected: {self.last_agent_count}, Got: {current_agent_count}. Resetting buffer.")
+            self.logger.warning(f"Agent count mismatch. Expected: {self.last_agent_count}, Got: {current_agent_count}. Resetting buffer.")
             self.current_positions[:current_agent_count] = new_positions
             self.next_positions[:current_agent_count] = new_positions
             self.agent_ids[:current_agent_count] = new_agent_ids
@@ -74,7 +75,7 @@ class NumpyPositionBuffer:
         
         self.last_agent_count = current_agent_count
         
-        logger.info(f"Buffer stats: {self.get_stats()}, Interpolation steps: {interpolation_steps}")
+        self.logger.info(f"Buffer stats: {self.get_stats()}, Interpolation steps: {interpolation_steps}")
         
         return 
     
@@ -97,17 +98,6 @@ class NumpyPositionBuffer:
     def get_next_position(self):
         return self.buffer.popleft() if self.buffer else self.current_positions[:self.last_agent_count]
 
-    # def _adjust_buffer_size(self):
-    #     current_size = len(self.buffer)
-    #     if current_size < self.target_size - 3:
-    #         new_size = min(current_size + 3, self.max_size)
-    #     elif current_size > self.target_size + 3:
-    #         new_size = max(current_size - 3, self.min_size)
-    #     else:
-    #         return
-
-    #     self.buffer = deque(list(self.buffer)[-new_size:], maxlen=new_size)
-
     def get_stats(self):
         return {
             "current_size": len(self.buffer),
@@ -118,7 +108,8 @@ class NumpyPositionBuffer:
         
 class VisualSystem:
     def __init__(self, queues):
-        logger.info("Initializing VisualSystem")
+        self.logger = get_logger(self.__class__.__name__)
+        self.logger.info("Initializing VisualSystem")
         self.config_manager = ConfigManager()
 
         # for screen
@@ -154,16 +145,17 @@ class VisualSystem:
         self.last_physics_update_count_time = time.time()# Assume 30 FPS for physics updates, adjust as needed
 
         self.timer = Timer('Visual System ')
+        self.stats1 = Timer('Stats1 ')
         self.last_buffer_print_time = time.time()
 
     def initialize(self):
-        logger.info("VisualSystem: Waiting for initialization data...")
+        self.logger.info("VisualSystem: Waiting for initialization data...")
         while True:
             try:
                 init_data = self._eco_to_visual_init.get(timeout=0.1)
                 break
             except Empty:
-                logger.warning("VisualSystem: No initialization data received, retrying...")
+                self.logger.warning("VisualSystem: No initialization data received, retrying...")
                 continue
         self.current_agent_count = init_data['current_agent_count']
         self.positions[:self.current_agent_count] = init_data['positions']
@@ -171,9 +163,9 @@ class VisualSystem:
         self.species[:self.current_agent_count] = init_data['species']
         self.current_agent_count = init_data['current_agent_count']
 
-        logger.debug(f"Received positions: {self.positions[:5]}...")
-        logger.debug(f"Received agent_ids: {self.agent_ids[:5]}...")
-        logger.debug(f"Received species: {self.species[:5]}...")
+        self.logger.debug(f"Received positions: {self.positions[:5]}...")
+        self.logger.debug(f"Received agent_ids: {self.agent_ids[:5]}...")
+        self.logger.debug(f"Received species: {self.species[:5]}...")
 
    
         self.position_buffer.initialize(self.positions, self.agent_ids)
@@ -186,37 +178,43 @@ class VisualSystem:
                 agent_id = self.agent_ids[i]
                 self.create_creature(agent_id, species, x, y)
             except Exception as e:
-                logger.error(f"Error creating creature {i}: {e}")
+                self.logger.error(f"Error creating creature {i}: {e}")
 
         # Add the initial frame to the buffer
         self.position_buffer.add_frames([self.positions])
         self.last_agent_count = self.current_agent_count
         
-        logger.info(f"VisualSystem initialized with {self.current_agent_count} creatures")
-        logger.debug(f"Initial buffer size: {len(self.position_buffer.buffer)}")
+        self.logger.info(f"VisualSystem initialized with {self.current_agent_count} creatures")
+        self.logger.debug(f"Initial buffer size: {len(self.position_buffer.buffer)}")
         self.initialized = True
         
     def create_creature(self, agent_id: int, species: int, x: float, y: float):
-        creature = Creature(species, pygame.Vector2(x, y))
+        creature = Creature(species, Vector2(x, y))
         self.creatures[agent_id] = creature
         self.all_sprites.add(creature)
-        logger.debug(f"Created creature: agent_id={agent_id}, species={species}, position=({x}, {y})")
+        self.logger.debug(f"Created creature: agent_id={agent_id}, species={species}, position=({x}, {y})")
         
     def remove_creature(self, agent_id):
         if agent_id in self.creatures:
             self.all_sprites.remove(self.creatures[agent_id])
             del self.creatures[agent_id]
-            logger.debug(f"Removed creature: agent_id={agent_id}")
+            self.logger.debug(f"Removed creature: agent_id={agent_id}")
         else:
-            logger.warning(f"Attempted to remove non-existent creature: agent_id={agent_id}")
+            self.logger.warning(f"Attempted to remove non-existent creature: agent_id={agent_id}")
 
     def update(self):
         self.timer.start()
         self.process_queue()
+        
+        
         self.update_buffer()
+        
+        self.stats1.start()
         self.update_creatures()
+        self.stats1.print_lap_time(1)
         self.draw()
-        self.print_buffer_size()
+   
+        # self.print_buffer_size()
         
         # Measure and update frame time
         frame_time = self.timer.calculate_time()
@@ -261,7 +259,6 @@ class VisualSystem:
                 self.physics_update_interval, avg_frame_time
             )
             
-
         except Empty:
             pass
 
@@ -269,8 +266,7 @@ class VisualSystem:
         next_position = self.position_buffer.get_next_position()
         for agent_id, position in zip(self.agent_ids, next_position):
             if agent_id in self.creatures:
-                pygame_pos = pygame.Vector2(position[0], position[1])
-                self.creatures[agent_id].update(pygame_pos)
+                self.creatures[agent_id].update(position)
 
     def draw(self):
         self.world_surface.fill(self.background_color)
@@ -280,7 +276,7 @@ class VisualSystem:
         self.screen.blit(self.world_surface, rect)
         
         pygame.display.flip()
-        logger.debug("Frame rendered")
+        self.logger.debug("Frame rendered")
 
     def _handle_agent_added(self, data):
         agent_id = data['agent_id']
@@ -294,7 +290,7 @@ class VisualSystem:
         self.species[index] = species
         self.current_agent_count += 1
 
-        logger.debug(f"Agent {agent_id} added. Total agents: {self.current_agent_count}")
+        self.logger.debug(f"Agent {agent_id} added. Total agents: {self.current_agent_count}")
 
     def _handle_agent_removed(self, data):
         agent_id = data['agent_id']
@@ -308,21 +304,21 @@ class VisualSystem:
             self.species[self.current_agent_count-1] = 0
             self.current_agent_count -= 1
             
-            logger.debug(f"Agent {agent_id} removed. Total agents: {self.current_agent_count}")
+            self.logger.debug(f"Agent {agent_id} removed. Total agents: {self.current_agent_count}")
         else:
-            logger.warning(f"Attempted to remove non-existent agent {agent_id}")
+            self.logger.warning(f"Attempted to remove non-existent agent {agent_id}")
         
 
     def print_buffer_size(self):
         current_time = time.time()
         if current_time - self.last_buffer_print_time >= 1.0:
             buffer_stats = self.position_buffer.get_stats()
-            logger.info(f"Buffer stats: {buffer_stats}")
-            logger.info(f"Visual FPS: {self.clock.get_fps():.2f}")
-            logger.info(f"Physics update rate: {1.0/self.physics_update_interval:.2f} FPS")
+            self.logger.info(f"Buffer stats: {buffer_stats}")
+            self.logger.info(f"Visual FPS: {self.clock.get_fps():.2f}")
+            self.logger.info(f"Physics update rate: {1.0/self.physics_update_interval:.2f} FPS")
             self.last_buffer_print_time = current_time
 
     def cleanup(self):        
         pygame.quit()
-        logger.info("VisualSystem cleaned up")
+        self.logger.info("VisualSystem cleaned up")
         

@@ -12,7 +12,9 @@ from timer import Timer
 from log import get_logger, set_log_level
 import logging
 
-logger = get_logger()
+from TEST.performance_tracker import PerformanceTracker
+
+logger = get_logger(__name__)
 
 def eco_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     ecosystem = Ecosystem(queues)
@@ -93,7 +95,8 @@ def box2d_run(queues, shared_memory, running, initialization_complete, eco_init_
             break
     
     logger.info("Box2D process ending")
-
+    
+@PerformanceTracker.measure_time
 def visual_system_run(queues, shared_memory, running, initialization_complete, eco_init_done):
     timer = Timer("Render ")
     visual_system = VisualSystem(queues)
@@ -212,5 +215,5 @@ def run_simulation():
     logger.info("Simulation ended")
 
 if __name__ == "__main__":
-    set_log_level(logging.INFO)  # ログレベルを設定（必要に応じて変更可能）
+    set_log_level(logging.CRITICAL)  # ログレベルを設定（必要に応じて変更可能）
     run_simulation()

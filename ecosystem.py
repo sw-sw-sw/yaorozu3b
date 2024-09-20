@@ -6,7 +6,7 @@ import random
 import time
 from log import get_logger
 
-logger = get_logger()
+logger = get_logger(__name__)
 class Ecosystem:
     def __init__(self, queues):
         logger.info("Initializing Ecosystem")
@@ -55,18 +55,18 @@ class Ecosystem:
         # transfer box2data and update from box2d data
         self.ad.update()
 
-        self.count += 1
+        # self.count += 1
         # if self.count == 20:
         #     self.count = 0
         #     self.remove_random_agents(1)
             
         
-        if self.count == 5:
-            self.count = 0
-            self.add_random_agent(1)
-        if self.count == 10:
-            self.count = 0
-            self.add_random_agent(2)
+        # if self.count == 5:
+        #     self.count = 0
+        #     self.add_random_agent(1)
+        # if self.count == 10:
+        #     self.count = 0
+        #     self.add_random_agent(2)
             
             
     def add_random_agent(self,num = 1):
