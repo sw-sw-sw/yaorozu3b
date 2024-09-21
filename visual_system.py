@@ -141,7 +141,7 @@ class VisualSystem:
         self.frame_times = deque(maxlen=60)  # Store last 60 frame times
         self.last_physics_update_time = time.time()
         self.physics_update_interval = 0.1  # Initial estimate, will be updated dynamically
-        self.physics_update_count = 0
+        self.physics_update_count = 2
         self.last_physics_update_count_time = time.time()# Assume 30 FPS for physics updates, adjust as needed
 
         self.timer = Timer('Visual System ')

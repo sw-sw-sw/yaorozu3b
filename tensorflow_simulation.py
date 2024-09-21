@@ -134,14 +134,12 @@ class TensorFlowSimulation:
         logger.info("TensorFlowSimulation initialized successfully")
 
     def update(self):
-        updated = self.update_property()
-        if updated:
-            forces = self.calculate_forces()
-            self.send_forces_to_box2d(forces.numpy()[:])
-            self.update_ui_parameters()
+        self.update_property()
+        forces = self.calculate_forces()
+        self.send_forces_to_box2d(forces.numpy()[:])
+        self.update_ui_parameters()
                 
     def update_property(self):
-        updated = False
         try:
             while True:
                 data = self._box2d_to_tf.get_nowait()
@@ -153,10 +151,9 @@ class TensorFlowSimulation:
                 self.tf_positions.assign(tf.where(mask, new_positions, tf.zeros_like(new_positions)))
                 self.tf_species.assign(tf.where(mask[:, 0], new_species, tf.zeros_like(new_species)))
                 self.tf_current_agent_count.assign(new_count)
-                updated = True
         except Empty:
             pass
-        return updated
+        return 
         
 
     def send_forces_to_box2d(self, np_forces):
@@ -168,8 +165,11 @@ class TensorFlowSimulation:
         logger.debug(f"Sent forces to Box2D for {data['current_agent_count']} agents")
 
     @tf.function
-    def calculate_forces(self):
-        to_center = self.world_center - self.tf_positions
+    def calculate_forces(self):        
+        active_count = self.tf_current_agent_count
+        positions = self.tf_positions[:active_count]
+        species = self.tf_species[:active_count]
+        to_center = self.world_center - positions
         distances = tf.norm(to_center, axis=1, keepdims=True)
         normalized_to_center = to_center / (distances + 1e-5)
         
@@ -178,15 +178,15 @@ class TensorFlowSimulation:
         
         # Circular confinement (only applied outside the world radius)
         outside_circle = tf.cast(distances > self.world_radius, tf.float32)
-        confinement_force = outside_circle  * (distances - self.world_radius) * normalized_to_center
+        confinement_force = outside_circle * (distances - self.world_radius) * normalized_to_center
         
         # Create perpendicular vector for rotation (counter-clockwise)
         rotation_force = tf.stack([-to_center[:, 1], to_center[:, 0]], axis=1)
         rotation_force = tf.nn.l2_normalize(rotation_force, axis=1)
         
-        distances = self._calculate_distances(self.tf_positions)
-        separation = self._separation(self.tf_positions, distances)
-        cohesion = self._cohesion(self.tf_positions, distances)
+        distances = self._calculate_distances(positions)
+        separation = self._separation(positions, distances)
+        cohesion = self._cohesion(positions, distances)
         # predator_prey = self._predator_prey_forces(self.tf_positions, distances, self.tf_species)
         
         forces = (self.separation_weight * separation * 1.0 +
@@ -196,7 +196,8 @@ class TensorFlowSimulation:
             confinement_force * self.confinement_weight * 0.056 +
             rotation_force * self.rotation_strength * 12.8)  
         
-        return forces
+        padded_forces = tf.pad(forces, [[0, self.max_agents_num - active_count], [0, 0]])
+        return padded_forces
     
     @profile
     @tf.function

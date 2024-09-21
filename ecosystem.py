@@ -5,6 +5,7 @@ from agents_data import AgentsData
 import random
 import time
 from log import get_logger
+from timer import Timer
 
 logger = get_logger(__name__)
 
@@ -16,7 +17,7 @@ class Ecosystem:
         self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
         self.world_height = self.config_manager.get_trait_value('WORLD_HEIGHT')
         self.ad = AgentsData(self.max_agents_num, queues)        # タイマー関連の設定
-        self.count = 0
+        self.timer = Timer("random agent")
         logger.info(f"Ecosystem initialized with max_agents_num: {self.max_agents_num}, world_size: {self.world_width}x{self.world_height}")
 
         self.random_add_agents_num = 20
@@ -60,18 +61,11 @@ class Ecosystem:
     def update(self):
         # transfer box2data and update from box2d data
         self.ad.update()
-        self.random_test()            
+        
+        if self.timer.interval_timer(5):
+            self.add_random_agent(15)            
         
     # ----------------- Random test ----------------------
-        
-    def random_test(self, counts=200):
-        self.count += 1
-        if self.count == 100:
-            self.add_random_agent(self.random_add_agents_num)
-        if self.count == 200:
-            self.remove_random_agents(self.random_remove_agents_num)
-        if self.count == counts:
-            self.count = 0
             
     # add agent 
             
