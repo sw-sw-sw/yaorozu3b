@@ -20,7 +20,7 @@ class Ecosystem:
         self.timer = Timer("random agent")
         logger.info(f"Ecosystem initialized with max_agents_num: {self.max_agents_num}, world_size: {self.world_width}x{self.world_height}")
 
-        self.random_add_agents_num = 20
+        self.random_add_agents_num = 50
         self.random_remove_agents_num = 0
     
     # ----------------- Initialize ----------------------
@@ -62,7 +62,7 @@ class Ecosystem:
         # transfer box2data and update from box2d data
         self.ad.update()
         
-        if self.timer.interval_timer(5):
+        if self.timer.interval_timer(2):
             self.add_random_agent(15)            
         
     # ----------------- Random test ----------------------
