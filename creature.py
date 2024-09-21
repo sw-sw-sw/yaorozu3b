@@ -32,7 +32,7 @@ class Creature(pygame.sprite.Sprite):
         self._shell_point_size = self.dna.get_trait("SHELL_POINT_SIZE")
         self._color = self._get_color_from_dna()
         self._rotate = 0
-        self._rotate_v = self.dna.get_trait("SPEED")  * self.differ(1) * 0.5
+        self._rotate_v = self.dna.get_trait("SPEED")  * self.differ(1) * 0.1
         self._rotate_count = 0
         self._last_rotate = 0
         self._flash = False
