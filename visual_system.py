@@ -114,7 +114,7 @@ class VisualSystem:
 
         # for screen
         pygame.init()
-        self.clock = pygame.time.Clock()
+        # self.clock = pygame.time.Clock()
         self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
         self.world_height = self.config_manager.get_trait_value('WORLD_HEIGHT')
         self.background_color = self.config_manager.get_trait_value_as_tuple('BACKGROUND_COLOR')
@@ -209,18 +209,17 @@ class VisualSystem:
         
         self.update_buffer()
         
-        self.stats1.start()
+        # self.stats1.start()
         self.update_creatures()
-        self.stats1.print_lap_time(1)
+        # self.stats1.print_lap_time(1)
         self.draw()
-   
         # self.print_buffer_size()
         
         # Measure and update frame time
         frame_time = self.timer.calculate_time()
         self.frame_times.append(frame_time)
         # Adaptive frame rate control
-        self.clock.tick(self.target_fps)
+        # self.clock.tick(self.target_fps)
 
     def process_queue(self):
         while True:
@@ -236,7 +235,7 @@ class VisualSystem:
 
     def update_buffer(self):
         try:
-            render_data = self._eco_to_visual_render.get_nowait()
+            render_data = self._eco_to_visual_render.get()
             positions = render_data['positions']
             agent_ids = render_data['agent_ids']
             self.current_agent_count = render_data['current_agent_count']
@@ -255,9 +254,12 @@ class VisualSystem:
             avg_frame_time = sum(self.frame_times) / len(self.frame_times) if self.frame_times else (1.0 / self.target_fps)
             
             self.position_buffer.update_with_physics_data(
-                positions, agent_ids, self.current_agent_count, 
-                self.physics_update_interval, avg_frame_time
-            )
+                positions, 
+                agent_ids, 
+                self.current_agent_count, 
+                self.physics_update_interval, 
+                avg_frame_time
+                )
             
         except Empty:
             pass

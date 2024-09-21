@@ -75,11 +75,9 @@ class Box2DSimulation:
         
     def update(self):
         self.process_ecosystem_queue()
-        
         self.update_forces()
         self.step()
         self.update_positions()
-        
         self.send_data_to_tf()
         self.send_data_to_eco()
 
@@ -144,7 +142,7 @@ class Box2DSimulation:
             pass
                     
     def step(self):
-        self.world.Step(self.dt, 6, 3)
+        self.world.Step(self.dt, 36, 18 )
 
     def update_positions(self):
         for i, agent_id in enumerate(self.agent_ids[:self.current_agent_count]):

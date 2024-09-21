@@ -24,7 +24,7 @@ class Creature(pygame.sprite.Sprite):
 
 
     def _initialize_traits(self):
-        self._size = self.dna.get_trait("SIZE")
+        self._size = self.dna.get_trait("SIZE")  * self.differ() 
         self._horn_num = int(self.dna.get_trait("HORN_NUM"))
         self._horn_length = self.dna.get_trait("HORN_LENGTH")
         self._horn_width = self.dna.get_trait("HORN_WIDTH")
@@ -32,8 +32,9 @@ class Creature(pygame.sprite.Sprite):
         self._shell_point_size = self.dna.get_trait("SHELL_POINT_SIZE")
         self._color = self._get_color_from_dna()
         self._rotate = 0
-        self._rotate_v = self.dna.get_trait("SPEED") * (random.random() - 0.5) * 5
+        self._rotate_v = self.dna.get_trait("SPEED")  * self.differ(1) * 0.5
         self._rotate_count = 0
+        self._last_rotate = 0
         self._flash = False
         self._flash_count = 0
         self._flash_cycle = self._initialize_flash_interval()
@@ -92,7 +93,7 @@ class Creature(pygame.sprite.Sprite):
 
     def update(self, new_position=None):
         if new_position is not None:
-            self.position = new_position
+            self.position.update(new_position[0], new_position[1])
         
         self._rotate += self._rotate_v
         
@@ -105,12 +106,13 @@ class Creature(pygame.sprite.Sprite):
 
         self._create_surface()
         self.rect.center = self.position
-        self.image = pygame.transform.rotate(self.image, math.degrees(self._rotate))
-        
-        if self._rotate_count % 5 == 0:
-            self.rect = self.image.get_rect(center=self.position)
-            self._rotate_count = 0
-            
+
+        if abs(self._rotate - self._last_rotate) > 0.1:
+                self.image = pygame.transform.rotate(self.image, self._rotate)
+                self._last_rotate = abs(self._rotate)    
+
+        self.rect = self.image.get_rect(center=self.position)
+
     def get_radius(self):
         return max(self._size / 2, 
                    self._size * self._shell_size / 2 + self._shell_point_size + 2, 
@@ -119,3 +121,7 @@ class Creature(pygame.sprite.Sprite):
     def _get_color_from_dna(self):
         color_value = int(self.dna.get_trait("COLOR"))
         return pygame.Color(color_value, color_value, color_value)
+    
+    
+    def differ(self, rate = 0.2):
+        return 1 + random.random() * rate 

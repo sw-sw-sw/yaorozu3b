@@ -134,14 +134,16 @@ class TensorFlowSimulation:
         logger.info("TensorFlowSimulation initialized successfully")
 
     def update(self):
-        self.update_property()
-        forces = self.calculate_forces()
-        self.send_forces_to_box2d(forces.numpy()[:])
-        self.update_ui_parameters()
+        updated = self.update_property()
+        if updated:
+            forces = self.calculate_forces()
+            self.send_forces_to_box2d(forces.numpy()[:])
+            self.update_ui_parameters()
                 
     def update_property(self):
-        while True:
-            try:
+        updated = False
+        try:
+            while True:
                 data = self._box2d_to_tf.get_nowait()
                 new_count = tf.convert_to_tensor(data['current_agent_count'], dtype=tf.int32)
                 new_positions = tf.convert_to_tensor(data['positions'], dtype=tf.float32)
@@ -151,8 +153,11 @@ class TensorFlowSimulation:
                 self.tf_positions.assign(tf.where(mask, new_positions, tf.zeros_like(new_positions)))
                 self.tf_species.assign(tf.where(mask[:, 0], new_species, tf.zeros_like(new_species)))
                 self.tf_current_agent_count.assign(new_count)
-            except Empty:
-                break
+                updated = True
+        except Empty:
+            pass
+        return updated
+        
 
     def send_forces_to_box2d(self, np_forces):
         data = {
@@ -182,11 +187,11 @@ class TensorFlowSimulation:
         distances = self._calculate_distances(self.tf_positions)
         separation = self._separation(self.tf_positions, distances)
         cohesion = self._cohesion(self.tf_positions, distances)
-        predator_prey = self._predator_prey_forces(self.tf_positions, distances, self.tf_species)
+        # predator_prey = self._predator_prey_forces(self.tf_positions, distances, self.tf_species)
         
         forces = (self.separation_weight * separation * 1.0 +
             self.cohesion_weight * cohesion * 0.35 + 
-            self.predator_prey_weight * predator_prey * 0.46 +
+            # self.predator_prey_weight * predator_prey * 0.46 +
             center_force * self.center_attraction_weight * 12.8 +
             confinement_force * self.confinement_weight * 0.056 +
             rotation_force * self.rotation_strength * 12.8)  
