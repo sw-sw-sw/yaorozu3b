@@ -11,9 +11,6 @@ from log import get_logger
 from collections import deque
 from keep.flame_buffer import FlameBuffer
 
-
-        
-
         
 class VisualSystem:
     def __init__(self, queues):

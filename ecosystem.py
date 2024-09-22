@@ -64,11 +64,11 @@ class Ecosystem:
         # transfer box2data and update from box2d data
         self.ad.update()
         
-        if self.add_timer.interval_timer(2):
-            self.add_random_agent(30) 
+        # if self.add_timer.interval_timer(2):
+        #     self.add_random_agent(30) 
 
-        if self.remove_timer.interval_timer(2):
-            self.remove_random_agents(10)         
+        if self.remove_timer.interval_timer(1):
+            self.remove_random_agents(2)         
         
     # ----------------- Random test ----------------------
             

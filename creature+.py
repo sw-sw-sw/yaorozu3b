@@ -5,7 +5,7 @@ import pygame
 from pygame import Vector2
 from config_manager import ConfigManager, DNASpecies
 
-class Creature(pygame.sprite.Sprite):
+class Creature:
 
     def __init__(self, species: int, position: Vector2):
         super().__init__() 
@@ -23,6 +23,7 @@ class Creature(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=self.position)
 
 
+
     def _initialize_traits(self):
         self._size = self.dna.get_trait("SIZE")  * self.differ(0) 
         self._horn_num = int(self.dna.get_trait("HORN_NUM"))
@@ -35,9 +36,11 @@ class Creature(pygame.sprite.Sprite):
         self._rotate_v = self.dna.get_trait("SPEED")  * self.differ(1) * 0.1
         self._rotate_count = 0
         self._last_rotate = 0
-        self._flash = False
-        self._flash_count = 0
-        self._flash_cycle = self._initialize_flash_interval()
+        # New attributes for smooth flashing
+        self._flash_cycle = random.uniform(2.0, 5.0)  # Random cycle between 2 and 5 seconds
+        self._flash_offset = random.uniform(0, 2 * math.pi)  # Random offset for the sine wave
+        self._flash_time = 0
+        
         self._flash_radius = min(self._size /2 , 8)
         
         self._horn_pos_in = []
@@ -68,9 +71,17 @@ class Creature(pygame.sprite.Sprite):
     def _create_surface(self):
         self.image = self.base_image.copy()
             # Draw flash circle if _flash is True
-        if self._flash:
-            pygame.draw.circle(self.image, (255, 255, 255), self.center, self._flash_radius)
-        
+        c = int(self._calculate_flash_intensity() * 255)
+        print(c)
+        if c > 0:
+            # flash_surface = pygame.Surface((self.surface_size, self.surface_size), pygame.SRCALPHA)
+            pygame.draw.circle(self.image, (c ,c ,c ), self.center, self._flash_radius)
+            # self.image.blit(flash_surface, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+            
+    def _calculate_flash_intensity(self):
+        # Use sine wave to calculate flash intensity
+        return (math.sin(self._flash_time * 2 * math.pi / self._flash_cycle + self._flash_offset) + 1) / 2
+    
     def _create_base_surface(self):
         self.base_image = pygame.Surface((self.surface_size, self.surface_size), pygame.SRCALPHA)
 
@@ -97,12 +108,7 @@ class Creature(pygame.sprite.Sprite):
         
         self._rotate += self._rotate_v
         
-        self._flash_count += 1
-        if self._flash_count == self._flash_cycle:
-            self._flash = True
-            self._flash_count = 0
-        else:
-            self._flash = False
+        self._flash_time += 1 / 60
 
         self._create_surface()
         self.rect.center = self.position

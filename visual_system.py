@@ -3,12 +3,13 @@ from pygame import Vector2
 import numpy as np
 from config_manager import ConfigManager
 from creature import Creature
-from typing import Dict
+from typing import Dict, List
 import time
 from timer import Timer
 from queue import Empty
 from log import get_logger
-   
+
+
 class VisualSystem:
     def __init__(self, queues):
         self.logger = get_logger(self.__class__.__name__)
@@ -33,7 +34,6 @@ class VisualSystem:
         self.agent_ids = np.full(self.max_agents_num, -1, dtype=np.int32)
         self.species = np.zeros(self.max_agents_num, dtype=np.int32)
         self.creatures: Dict[int, Creature] = {}
-        
         # queue
         self._eco_to_visual_render = queues['eco_to_visual_render']
         self._eco_to_visual_init = queues['eco_to_visual_init']
@@ -82,7 +82,8 @@ class VisualSystem:
         
     def remove_creature(self, agent_id):
         if agent_id in self.creatures:
-            self.all_sprites.remove(self.creatures[agent_id])
+            creature = self.creatures[agent_id]
+            self.all_sprites.remove(creature)
             del self.creatures[agent_id]
             self.logger.debug(f"Removed creature: agent_id={agent_id}")
         else:
@@ -119,10 +120,8 @@ class VisualSystem:
     def update_creatures(self):
         for agent_id, position in zip(self.agent_ids, self.positions):
             if agent_id in self.creatures:
-                self.creatures[agent_id].update(position)
-            else:
-                self.remove_creature(agent_id)
-
+                self.creatures[agent_id].update(position)     
+           
     def draw(self):
         self.world_surface.fill(self.background_color)
         self.all_sprites.draw(self.world_surface)
@@ -138,27 +137,13 @@ class VisualSystem:
         species = data['species']
         position = data['position']
         self.create_creature(agent_id, species, position[0], position[1])
-
         self.logger.debug(f"Agent {agent_id} added. Total agents: {self.current_agent_count}")
 
     def _handle_agent_removed(self, data):
         agent_id = data['agent_id']
         if agent_id in self.creatures:
             self.remove_creature(agent_id)
-
-            self.logger.debug(f"Agent {agent_id} removed. Total agents: {self.current_agent_count}")
-        else:
-            self.logger.warning(f"Attempted to remove non-existent agent {agent_id}")
-        
-
-    def print_buffer_size(self):
-        current_time = time.time()
-        if current_time - self.last_buffer_print_time >= 1.0:
-            buffer_stats = self.flame_buffer.get_stats()
-            self.logger.info(f"Buffer stats: {buffer_stats}")
-            self.logger.info(f"Visual FPS: {self.clock.get_fps():.2f}")
-            self.logger.info(f"Physics update rate: {1.0/self.physics_update_interval:.2f} FPS")
-            self.last_buffer_print_time = current_time
+            self.logger.debug(f"Agent {agent_id} removed . Total agents: {self.current_agent_count}")
 
     def cleanup(self):        
         pygame.quit()
