@@ -8,7 +8,13 @@ import time
 from timer import Timer
 from queue import Empty
 from log import get_logger
-   
+from collections import deque
+from keep.flame_buffer import FlameBuffer
+
+
+        
+
+        
 class VisualSystem:
     def __init__(self, queues):
         self.logger = get_logger(self.__class__.__name__)
@@ -39,9 +45,18 @@ class VisualSystem:
         self._eco_to_visual_init = queues['eco_to_visual_init']
         self._eco_to_visual = queues['eco_to_visual']
         
+        # フレーム補間
+        self.flame_buffer = FlameBuffer(self.max_agents_num, target_size=10, max_size=60)        
+        self.frame_times = deque(maxlen=60)  # Store last 60 frame times
+        self.last_physics_update_time = time.time()
+        self.physics_update_interval = 0.1  # Initial estimate, will be updated dynamically
+        self.physics_update_count = 2
+        self.last_physics_update_count_time = time.time()# Assume 30 FPS for physics updates, adjust as needed
+
         self.timer = Timer('Visual System ')
         self.stats1 = Timer('Stats1 ')
-        
+        self.last_buffer_print_time = time.time()
+
     def initialize(self):
         self.logger.info("VisualSystem: Waiting for initialization data...")
         while True:
@@ -52,14 +67,17 @@ class VisualSystem:
                 self.logger.warning("VisualSystem: No initialization data received, retrying...")
                 continue
         self.current_agent_count = init_data['current_agent_count']
-        self.positions = init_data['positions']
-        self.agent_ids = init_data['agent_ids']
-        self.species = init_data['species']
+        self.positions[:self.current_agent_count] = init_data['positions']
+        self.agent_ids[:self.current_agent_count] = init_data['agent_ids']
+        self.species[:self.current_agent_count] = init_data['species']
         self.current_agent_count = init_data['current_agent_count']
 
         self.logger.debug(f"Received positions: {self.positions[:5]}...")
         self.logger.debug(f"Received agent_ids: {self.agent_ids[:5]}...")
         self.logger.debug(f"Received species: {self.species[:5]}...")
+
+   
+        self.flame_buffer.initialize(self.positions, self.agent_ids)
         
         # Create creatures and initialize their positions
         for i in range(self.current_agent_count):
@@ -71,7 +89,12 @@ class VisualSystem:
             except Exception as e:
                 self.logger.error(f"Error creating creature {i}: {e}")
 
+        # Add the initial frame to the buffer
+        self.flame_buffer.add_frames([self.positions])
+        self.last_agent_count = self.current_agent_count
+        
         self.logger.info(f"VisualSystem initialized with {self.current_agent_count} creatures")
+        self.logger.debug(f"Initial buffer size: {len(self.flame_buffer.buffer)}")
         self.initialized = True
         
     def create_creature(self, agent_id: int, species: int, x: float, y: float):
@@ -91,10 +114,22 @@ class VisualSystem:
     def update(self):
         self.timer.start()
         self.process_queue()
-        self.update_property()
-        self.update_creatures()
-        self.draw()
         
+        
+        self.update_buffer()
+        
+        # self.stats1.start()
+        self.update_creatures()
+        # self.stats1.print_lap_time(1)
+        self.draw()
+        # self.print_buffer_size()
+        
+        # Measure and update frame time
+        frame_time = self.timer.calculate_time()
+        self.frame_times.append(frame_time)
+        # Adaptive frame rate control
+        # self.clock.tick(self.target_fps)
+
     def process_queue(self):
         while True:
             try:
@@ -107,17 +142,40 @@ class VisualSystem:
             except Empty:
                 break
 
-    def update_property(self):
+    def update_buffer(self):
         try:
             render_data = self._eco_to_visual_render.get()
-            self.positions = render_data['positions']
-            self.agent_ids = render_data['agent_ids']
+            positions = render_data['positions']
+            agent_ids = render_data['agent_ids']
             self.current_agent_count = render_data['current_agent_count']
+            self.positions[:self.current_agent_count] = positions
+            self.agent_ids[:self.current_agent_count] = agent_ids
+            
+            #演算フレームレート(physics_update_interval)のを計算
+            current_time = time.time()
+            self.physics_update_count += 1
+            if current_time - self.last_physics_update_count_time >= 1.0:
+                self.physics_update_interval = 1.0 / self.physics_update_count
+                self.physics_update_count = 0
+                self.last_physics_update_count_time = current_time
+
+            #描画フレームレート(avg_frame_time)の計算
+            avg_frame_time = sum(self.frame_times) / len(self.frame_times) if self.frame_times else (1.0 / self.target_fps)
+            
+            self.flame_buffer.update_with_physics_data(
+                positions, 
+                agent_ids, 
+                self.current_agent_count, 
+                self.physics_update_interval, 
+                avg_frame_time
+                )
+            
         except Empty:
             pass
 
     def update_creatures(self):
-        for agent_id, position in zip(self.agent_ids, self.positions):
+        next_position = self.flame_buffer.get_next_position()
+        for agent_id, position in zip(self.agent_ids, next_position):
             if agent_id in self.creatures:
                 self.creatures[agent_id].update(position)
             else:

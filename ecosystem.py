@@ -17,7 +17,9 @@ class Ecosystem:
         self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
         self.world_height = self.config_manager.get_trait_value('WORLD_HEIGHT')
         self.ad = AgentsData(self.max_agents_num, queues)        # タイマー関連の設定
-        self.timer = Timer("random agent")
+        self.add_timer = Timer("add random agent")
+        self.remove_timer = Timer("remove random agent")
+
         logger.info(f"Ecosystem initialized with max_agents_num: {self.max_agents_num}, world_size: {self.world_width}x{self.world_height}")
 
         self.random_add_agents_num = 50
@@ -62,8 +64,11 @@ class Ecosystem:
         # transfer box2data and update from box2d data
         self.ad.update()
         
-        if self.timer.interval_timer(2):
-            self.add_random_agent(15)            
+        if self.add_timer.interval_timer(2):
+            self.add_random_agent(30) 
+
+        if self.remove_timer.interval_timer(2):
+            self.remove_random_agents(10)         
         
     # ----------------- Random test ----------------------
             
@@ -78,10 +83,14 @@ class Ecosystem:
                 agent_id = random.choice(agent_ids)
                 species = self.ad.species[agent_id]
                 position = self.ad.positions[agent_id]
+                if species == 0:
+                    logger.warning("No agents available for reproduction")
+                else:
+                    for i in range(num):
+                        velocity = self.rnd_pos(3)
+                        self.ad.add_agent(species, position + velocity, velocity)
                 
-                for i in range(num):
-                    velocity = self.rnd_pos(3)
-                    self.ad.add_agent(species, position + velocity, velocity)
+                    
             else:
                 logger.warning("No agents available for reproduction")
         except Exception as e:

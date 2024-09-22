@@ -24,7 +24,7 @@ class Creature(pygame.sprite.Sprite):
 
 
     def _initialize_traits(self):
-        self._size = self.dna.get_trait("SIZE")  * self.differ() 
+        self._size = self.dna.get_trait("SIZE")  * self.differ(0.05) 
         self._horn_num = int(self.dna.get_trait("HORN_NUM"))
         self._horn_length = self.dna.get_trait("HORN_LENGTH")
         self._horn_width = self.dna.get_trait("HORN_WIDTH")

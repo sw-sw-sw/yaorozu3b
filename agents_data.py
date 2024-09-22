@@ -28,7 +28,7 @@ class AgentsData:
         self._eco_to_visual_render = queue_dict['eco_to_visual_render']
         
         self.delayed_queue = DelayedQueue()
-        self._delay_time = 0.2
+        self._delay_time = 0.1
 
         logger.info(f"AgentsData initialized with max_agents_num: {max_agents_num}")
 
@@ -78,7 +78,7 @@ class AgentsData:
             else:
                 agent_id = self.next_id
                 self.next_id += 1
-            
+
             index = self.current_agent_count
             self.positions[index] = np.array(position, dtype=np.float32)
             self.velocities[index] = np.array(velocity, dtype=np.float32)  # Set initial velocity
@@ -140,7 +140,8 @@ class AgentsData:
             'action': 'remove',
             'agent_id': agent_id,
         }
-        self._eco_to_visual.put(remove_data)
+        self.send_data_to_visual_delay(remove_data, self._delay_time)
+        # self._eco_to_visual.put(remove_data)
         self._eco_to_box2d.put(remove_data)
         logger.debug(f"Notified agent removal: id={agent_id}")
 
