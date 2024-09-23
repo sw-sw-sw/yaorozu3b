@@ -3,6 +3,7 @@ import numpy as np
 from config_manager import ConfigManager
 from agents_data import AgentsData
 import random
+from queue import Empty
 import time
 from log import get_logger
 from timer import Timer
@@ -19,7 +20,7 @@ class Ecosystem:
         self.ad = AgentsData(self.max_agents_num, queues)        # タイマー関連の設定
         self.add_timer = Timer("add random agent")
         self.remove_timer = Timer("remove random agent")
-
+        self._box2d_to_eco_collisions = queues['box2d_to_eco_collisions']
         logger.info(f"Ecosystem initialized with max_agents_num: {self.max_agents_num}, world_size: {self.world_width}x{self.world_height}")
 
         self.random_add_agents_num = 50
@@ -63,13 +64,25 @@ class Ecosystem:
     def update(self):
         # transfer box2data and update from box2d data
         self.ad.update()
+        self.process_collisions() 
         
         # if self.add_timer.interval_timer(2):
         #     self.add_random_agent(30) 
 
-        if self.remove_timer.interval_timer(1):
-            self.remove_random_agents(2)         
-        
+        # if self.remove_timer.interval_timer(2):
+        #     self.remove_random_agents(1)         
+    
+    # ----------------- collision ----------------------
+    
+    def process_collisions(self):
+        try:
+            collision_data = self._box2d_to_eco_collisions.get_nowait()
+            collisions = collision_data['collisions']
+            # for agent_id1, agent_id2 in collision_data['collisions']:
+            print('collisions data num = ', len(collisions))
+        except Empty:
+            pass
+    
     # ----------------- Random test ----------------------
             
     # add agent 

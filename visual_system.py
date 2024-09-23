@@ -90,7 +90,6 @@ class VisualSystem:
             self.logger.warning(f"Attempted to remove non-existent creature: agent_id={agent_id}")
 
     def update(self):
-        self.timer.start()
         self.process_queue()
         self.update_property()
         self.update_creatures()
@@ -110,10 +109,9 @@ class VisualSystem:
 
     def update_property(self):
         try:
-            render_data = self._eco_to_visual_render.get()
+            render_data = self._eco_to_visual_render.get_nowait()
             self.positions = render_data['positions']
             self.agent_ids = render_data['agent_ids']
-            self.current_agent_count = render_data['current_agent_count']
         except Empty:
             pass
 
@@ -136,11 +134,14 @@ class VisualSystem:
         agent_id = data['agent_id']
         species = data['species']
         position = data['position']
+        self.current_agent_count = data['current_agent_count']
+
         self.create_creature(agent_id, species, position[0], position[1])
         self.logger.debug(f"Agent {agent_id} added. Total agents: {self.current_agent_count}")
 
     def _handle_agent_removed(self, data):
         agent_id = data['agent_id']
+        self.current_agent_count = data['current_agent_count']
         if agent_id in self.creatures:
             self.remove_creature(agent_id)
             self.logger.debug(f"Agent {agent_id} removed . Total agents: {self.current_agent_count}")

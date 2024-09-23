@@ -116,7 +116,7 @@ def visual_system_run(queues, shared_memory, running, initialization_complete, e
             timer.start()
             visual_system.update()
             timer.print_fps(5)
-            time.sleep(0.001)
+            # time.sleep(0.001)
         except Exception as e:
             logger.exception(f"Error in Visual System update: {e}")
             running.value = False
@@ -127,7 +127,6 @@ def visual_system_run(queues, shared_memory, running, initialization_complete, e
 
 def run_simulation():
     logger.info("Starting simulation")
-    
     config_manager = ConfigManager()
     
     shared_memory = {
@@ -166,7 +165,8 @@ def run_simulation():
         'box2d_to_tf': mp.Queue(maxsize=10),
         'box2d_to_eco': mp.Queue(maxsize=10),
         'tf_to_box2d': mp.Queue(maxsize=10),
-        'ui_to_tensorflow': mp.Queue()
+        'ui_to_tensorflow': mp.Queue(),
+        'box2d_to_eco_collisions': mp.Queue()
     }
 
     initialization_complete = {
@@ -215,5 +215,5 @@ def run_simulation():
     logger.info("Simulation ended")
 
 if __name__ == "__main__":
-    set_log_level(logging.DEBUG)  # ログレベルを設定（必要に応じて変更可能）
+    set_log_level(logging.WARNING)  # ログレベルを設定（必要に応じて変更可能）
     run_simulation()

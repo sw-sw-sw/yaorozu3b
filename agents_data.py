@@ -139,6 +139,8 @@ class AgentsData:
         remove_data = {
             'action': 'remove',
             'agent_id': agent_id,
+            'current_agent_count': self.current_agent_count
+
         }
         self.send_data_to_visual_delay(remove_data, self._delay_time)
         # self._eco_to_visual.put(remove_data)

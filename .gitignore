@@ -8,3 +8,6 @@ params/
 profiling_results/
 TEST/test.ipynb
 logs/
+SETTINGS/
+capture/
+build/

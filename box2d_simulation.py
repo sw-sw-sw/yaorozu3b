@@ -1,4 +1,4 @@
-from Box2D import b2World, b2Vec2, b2BodyDef, b2_dynamicBody, b2CircleShape
+from Box2D import b2World, b2Vec2, b2BodyDef, b2_dynamicBody, b2CircleShape, b2ContactListener
 import numpy as np
 import random
 import time
@@ -8,10 +8,25 @@ from queue import Empty
 
 logger = get_logger(__name__)
 
+class CollisionListener(b2ContactListener):
+    def __init__(self):
+        super().__init__()
+        self.collisions = set()
+
+    def BeginContact(self, contact):
+        body_a = contact.fixtureA.body
+        body_b = contact.fixtureB.body
+        self.collisions.add((body_a.userData, body_b.userData))
+
+    def clear(self):
+        self.collisions.clear()
+
 class Box2DSimulation:
     def __init__(self, queues):
         self.queues = queues
         self.world = b2World(gravity=(0, 0), doSleep=True)
+        self.collision_listener = CollisionListener()
+        self.world.contactListener = self.collision_listener
         self.bodies = {}
         
         # Queues
@@ -19,7 +34,8 @@ class Box2DSimulation:
         self._eco_to_box2d = queues['eco_to_box2d']
         self._tf_to_box2d = queues['tf_to_box2d']
         self._box2d_to_tf = queues['box2d_to_tf']
-        self._box2d_to_eco = queues['box2d_to_eco'] 
+        self._box2d_to_eco = queues['box2d_to_eco']
+        self._box2d_to_eco_collisions = queues['box2d_to_eco_collisions']  # New queue for collision data
 
         # ConfigManager setup
         self.config_manager = ConfigManager()
@@ -66,6 +82,7 @@ class Box2DSimulation:
             linearDamping=linear_damping
         )
         body = self.world.CreateBody(body_def)
+        body.userData = agent_id  # Set agent_id as userData for collision detection
         circle_shape = b2CircleShape(radius=radius)
         body.CreateFixture(shape=circle_shape, density=density, 
                            friction=friction, restitution=restitution)
@@ -80,6 +97,7 @@ class Box2DSimulation:
         self.update_positions()
         self.send_data_to_tf()
         self.send_data_to_eco()
+        self.send_collision_data_to_eco()  # New method to send collision data
 
     def process_ecosystem_queue(self):
         while not self._eco_to_box2d.empty():
@@ -166,6 +184,14 @@ class Box2DSimulation:
         eco_data = {
             'positions': self.positions[:self.current_agent_count],
             'agent_ids': self.agent_ids[:self.current_agent_count],
-            'current_agent_count': self.current_agent_count
+            # 'current_agent_count': self.current_agent_count
         }
         self._box2d_to_eco.put(eco_data)
+
+    def send_collision_data_to_eco(self):
+        collision_data = {
+            'collisions': list(self.collision_listener.collisions)
+        }
+        self._box2d_to_eco_collisions.put(collision_data)
+        self.collision_listener.clear()  # Clear collisions after sending
+        logger.debug(f"Sent collision data to Ecosystem: {len(collision_data['collisions'])} collisions")

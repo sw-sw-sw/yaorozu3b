@@ -10,6 +10,7 @@ class Creature(pygame.sprite.Sprite):
     def __init__(self, species: int, position: Vector2):
         super().__init__() 
         self.config_manager = ConfigManager()
+        self.species = species
         self.dna: DNASpecies = self.config_manager.get_dna_for_species(species)
         self.position = position
         self._initialize_traits()
@@ -38,8 +39,7 @@ class Creature(pygame.sprite.Sprite):
         self._flash = False
         self._flash_count = 0
         self._flash_cycle = self._initialize_flash_interval()
-        self._flash_radius = min(self._size /2 , 8)
-        
+        self._flash_radius = self.dna.get_trait("RADIUS") * 0.5
         self._horn_pos_in = []
         self._horn_pos_out = []
         self._shell = []
