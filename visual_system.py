@@ -35,7 +35,7 @@ class VisualSystem:
         self.species = np.zeros(self.max_agents_num, dtype=np.int32)
         self.creatures: Dict[int, Creature] = {}
         # queue
-        self._eco_to_visual_render = queues['eco_to_visual_render']
+        self._box2d_to_visual_render = queues['box2d_to_visual_render']
         self._eco_to_visual_init = queues['eco_to_visual_init']
         self._eco_to_visual = queues['eco_to_visual']
         
@@ -109,7 +109,7 @@ class VisualSystem:
 
     def update_property(self):
         try:
-            render_data = self._eco_to_visual_render.get_nowait()
+            render_data = self._box2d_to_visual_render.get_nowait()
             self.positions = render_data['positions']
             self.agent_ids = render_data['agent_ids']
         except Empty:

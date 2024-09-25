@@ -1,3 +1,4 @@
+import pygame
 import time
 import numpy as np
 import tensorflow as tf
@@ -30,12 +31,18 @@ def eco_run(queues, shared_memory, running, initialization_complete, eco_init_do
         running.value = False
         return
     
+    clock = pygame.time.Clock()
+    target_fps = 60
+    
     while running.value:
         try:
             timer.start()
             ecosystem.update()
-            time.sleep(0.001)
             timer.print_fps(5)
+            
+            # Limit the frame rate to 60 FPS
+            clock.tick(target_fps)
+            
         except Exception as e:
             logger.exception(f"Error in Ecosystem update: {e}")
             running.value = False
@@ -160,8 +167,9 @@ def run_simulation():
         'eco_to_tf_init': mp.Queue(),
         'eco_to_visual_init': mp.Queue(),
         'eco_to_visual': mp.Queue(),
-        'eco_to_visual_render': mp.Queue(maxsize=10),
+        # 'eco_to_visual_render': mp.Queue(maxsize=10),
         'eco_to_tf': mp.Queue(maxsize=10),
+        'box2d_to_visual_render': mp.Queue(maxsize=10),
         'box2d_to_tf': mp.Queue(maxsize=10),
         'box2d_to_eco': mp.Queue(maxsize=10),
         'tf_to_box2d': mp.Queue(maxsize=10),

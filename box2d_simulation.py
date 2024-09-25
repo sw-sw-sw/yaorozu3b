@@ -35,6 +35,8 @@ class Box2DSimulation:
         self._tf_to_box2d = queues['tf_to_box2d']
         self._box2d_to_tf = queues['box2d_to_tf']
         self._box2d_to_eco = queues['box2d_to_eco']
+        self._box2d_to_visual_render = queues['box2d_to_visual_render']
+
         self._box2d_to_eco_collisions = queues['box2d_to_eco_collisions']  # New queue for collision data
 
         # ConfigManager setup
@@ -96,7 +98,8 @@ class Box2DSimulation:
         self.step()
         self.update_positions()
         self.send_data_to_tf()
-        self.send_data_to_eco()
+        self.send_data_to_eco_visual()
+
         self.send_collision_data_to_eco()  # New method to send collision data
 
     def process_ecosystem_queue(self):
@@ -179,14 +182,14 @@ class Box2DSimulation:
         }
         self._box2d_to_tf.put(data)
 
-    def send_data_to_eco(self):
-        
-        eco_data = {
+    def send_data_to_eco_visual(self):
+        data = {
             'positions': self.positions[:self.current_agent_count],
             'agent_ids': self.agent_ids[:self.current_agent_count],
-            # 'current_agent_count': self.current_agent_count
         }
-        self._box2d_to_eco.put(eco_data)
+        self._box2d_to_eco.put(data)
+        self._box2d_to_visual_render.put(data)
+
 
     def send_collision_data_to_eco(self):
         collision_data = {
