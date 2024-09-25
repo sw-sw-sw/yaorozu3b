@@ -34,12 +34,12 @@ class Ecosystem:
     def update(self):
         self.ad.update()
         self.process_collisions()
-        # self._update_life_energy()
-        # self._check_deaths()
-        # self._check_reproductions()
+        self.env_energy += self.ad.update_life_energy()
+        self.env_energy += self.ad.check_deaths()
+        self.ad.check_reproductions()
         
-        # if self.ad.current_agent_count < self.max_agents_num:
-        #     self._add_producer()
+        if self.ad.current_agent_count < self.max_agents_num:
+            self._add_producer()
 
         # self.random_add_agent(0) 
         # self.random_remove_agents(0)         
@@ -48,8 +48,8 @@ class Ecosystem:
         try:
             collision_data = self._box2d_to_eco_collisions.get_nowait()
             collisions = collision_data['collisions']
-            # for agent_id1, agent_id2 in collisions:
-            #     self._handle_collision(agent_id1, agent_id2)
+            for agent_id1, agent_id2 in collisions:
+                self._handle_collision(agent_id1, agent_id2)
         except Empty:
             pass
 
@@ -65,11 +65,13 @@ class Ecosystem:
                 energy_transfer = min(self.ad.life_gain[index1], self.ad.life_energy[index1] - self.ad.life_energy[index2])
                 self.ad.life_energy[index1] -= energy_transfer
                 self.ad.life_energy[index2] += energy_transfer
-                print('energy transfer!')
+                logger.debug(f'life energy transferred {agent_id1} to {agent_id2}. ')
             else:
                 energy_transfer = min(self.ad.life_gain[index2], self.ad.life_energy[index2] - self.ad.life_energy[index1])
                 self.ad.life_energy[index2] -= energy_transfer
                 self.ad.life_energy[index1] += energy_transfer
+                logger.debug(f'life energy transferred {agent_id2} to {agent_id1}. ')
+
         else:
             # Different species interaction (predation)
             predator_species = self.config_manager.get_species_trait_value('PREDATOR_SPECIES', species1)
@@ -83,35 +85,6 @@ class Ecosystem:
                     if random.random() < self.ad.predator_rate[index1]:
                         self.ad.life_energy[index1] += self.ad.life_energy[index2]
                         self.ad.life_energy[index2] = 0
-
-    def _update_life_energy(self):
-        energy_loss = self.ad.loss_rate[:self.ad.current_agent_count]
-        self.ad.life_energy[:self.ad.current_agent_count] -= energy_loss * 0.01
-        self.env_energy += np.sum(energy_loss)
-        print('env energy = ', self.env_energy)
-
-    def _check_deaths(self):
-        dead_agents = np.where(self.ad.life_energy[:self.ad.current_agent_count] <= 0)[0]
-        for index in dead_agents[::-1]:  # Iterate in reverse order
-            agent_id = self.ad.agent_ids[index]
-            species = self.ad.species[index]
-            radius = self.config_manager.get_species_trait_value('RADIUS', species)
-            self.env_energy += radius ** 2
-            self.ad.remove_agent(agent_id)
-
-    def _check_reproductions(self):
-        reproducing_agents = np.where(self.ad.life_energy[:self.ad.current_agent_count] > self.ad.birth_threshold[:self.ad.current_agent_count])[0]
-        for index in reproducing_agents:
-            if random.random() < self.ad.reproduction_rate[index]:
-                agent_id = self.ad.agent_ids[index]
-                species = self.ad.species[index]
-                position = self.ad.positions[index]
-                new_position = (position[0] + random.uniform(-10, 10), position[1] + random.uniform(-10, 10))
-                new_agent_id = self.ad.add_agent(species, new_position)
-                if new_agent_id is not None:
-                    new_index = np.where(self.ad.agent_ids == new_agent_id)[0][0]
-                    self.ad.life_energy[index] /= 2
-                    self.ad.life_energy[new_index] = self.ad.life_energy[index]
 
     def _add_producer(self):
         if self.env_energy > self.producer_threshold:  # Threshold for adding a new producer

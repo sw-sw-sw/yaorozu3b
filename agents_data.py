@@ -1,7 +1,7 @@
 import numpy as np
 from queue import Empty
 from log import get_logger
-import time
+import time, random
 from config_manager import ConfigManager
 from delayed_queue import QueueItem, DelayedQueue
 
@@ -95,6 +95,7 @@ class AgentsData:
         self.delayed_queue.update()
 
     # ------------------ add agent ---------------------
+    
     def add_agent_delay(self, species, position, velocity, delay_time):
         self.delayed_queue.add((species, position, velocity), delay_time, self.add_agent_arg)
         
@@ -105,13 +106,18 @@ class AgentsData:
     def add_agent(self, species, position, velocity=(0, 0)):
         agent_id = self._add_agent_internal(species, position, velocity)
         if agent_id is not None:
-            self._initialize_agent_properties(agent_id, species)
             self._notify_agent_add(agent_id, species, position, velocity)
             logger.info(f"Agent added: id={agent_id}, species={species}, position={position}")
         else:
             logger.error(f"Error: Cannot add agent. Maximum capacity of {self.max_agents_num} reached.")
         return agent_id
-
+    
+    def add_agent_no_notify(self, species, position, velocity=(0,0)):
+        agent_id = self._add_agent_internal(species, position)
+        if agent_id is not None:
+            logger.debug(f"Agent added without notification: id={agent_id}, species={species}, position={position}")
+        return agent_id
+    
     def _add_agent_internal(self, species, position, velocity=(0, 0)):
         if self.current_agent_count < self.max_agents_num:
             if self.available_ids:
@@ -124,6 +130,15 @@ class AgentsData:
             self.positions[index] = np.array(position, dtype=np.float32)
             self.velocities[index] = np.array(velocity, dtype=np.float32)
             self.species[index] = species
+            
+            radius = self.config_manager.get_species_trait_value('RADIUS', species)
+            self.life_energy[index] = radius * 1000
+            self.loss_rate[index] = radius
+            self.life_gain[index] = self.life_energy[index] / 500
+            self.birth_threshold[index] = self.config_manager.get_species_trait_value('BIRTH_THRESHOLD', species)
+            self.predator_rate[index] = self.config_manager.get_species_trait_value('PREDATOR_RATE', species)
+            self.reproduction_rate[index] = self.config_manager.get_species_trait_value('REPRODUCTION_RATE', species) / radius
+            
             self.agent_ids[index] = agent_id
             self.current_agent_count += 1
 
@@ -131,22 +146,6 @@ class AgentsData:
             return agent_id
         logger.warning("Failed to add agent: maximum capacity reached")
         return None
-
-    def _initialize_agent_properties(self, agent_id, species):
-        index = np.where(self.agent_ids == agent_id)[0][0]
-        radius = self.config_manager.get_species_trait_value('RADIUS', species)
-        self.life_energy[index] = radius * 1000
-        self.loss_rate[index] = radius
-        self.life_gain[index] = self.life_energy[index] / 500
-        self.birth_threshold[index] = self.config_manager.get_species_trait_value('BIRTH_THRESHOLD', species)
-        self.predator_rate[index] = self.config_manager.get_species_trait_value('PREDATOR_RATE', species)
-        self.reproduction_rate[index] = self.config_manager.get_species_trait_value('REPRODUCTION_RATE', species) / radius
-
-    def add_agent_no_notify(self, species, position, velocity=(0,0)):
-        agent_id = self._add_agent_internal(species, position)
-        if agent_id is not None:
-            logger.debug(f"Agent added without notification: id={agent_id}, species={species}, position={position}")
-        return agent_id
 
     def _notify_agent_add(self, agent_id, species, position, velocity):
         add_data = {
@@ -206,9 +205,42 @@ class AgentsData:
 
         }
         self.send_data_to_visual_delay(remove_data, self._delay_time)
-        # self._eco_to_visual.put(remove_data)
         self._eco_to_box2d.put(remove_data)
         logger.debug(f"Notified agent removal: id={agent_id}")
+
+    # -------------- life cycle -------------------------
+
+    def update_life_energy(self):
+        energy_to_env = 0
+        energy_loss = self.loss_rate[:self.current_agent_count]
+        self.life_energy[:self.current_agent_count] -= energy_loss * 0.1
+        energy_to_env += np.sum(energy_loss)
+        return energy_to_env
+    
+    def check_deaths(self):
+        energy_to_env = 0
+        dead_agents = np.where(self.life_energy[:self.current_agent_count] <= 0)[0]
+        for index in dead_agents[::-1]:  # Iterate in reverse order
+            agent_id = self.agent_ids[index]
+            species = self.species[index]
+            radius = self.config_manager.get_species_trait_value('RADIUS', species)
+            energy_to_env += radius ** 2
+            self.remove_agent(agent_id) 
+        return energy_to_env
+    
+    def check_reproductions(self):
+        reproducing_agents = np.where(self.life_energy[:self.current_agent_count] > self.birth_threshold[:self.current_agent_count])[0]
+        for index in reproducing_agents:
+            if random.random() < self.reproduction_rate[index]:
+                agent_id = self.agent_ids[index]
+                species = self.species[index]
+                position = self.positions[index]
+                new_position = (position[0] + random.uniform(-10, 10), position[1] + random.uniform(-10, 10))
+                new_agent_id = self.add_agent(species, new_position)
+                if new_agent_id is not None:
+                    new_index = np.where(self.agent_ids == new_agent_id)[0][0]
+                    self.life_energy[index] /= 2
+                    self.life_energy[new_index] = self.life_energy[index]
 
     # ----------------- Queues ----------------------
 

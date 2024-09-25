@@ -223,5 +223,5 @@ def run_simulation():
     logger.info("Simulation ended")
 
 if __name__ == "__main__":
-    set_log_level(logging.WARNING)  # ログレベルを設定（必要に応じて変更可能）
+    set_log_level(logging.DEBUG)  # ログレベルを設定（必要に応じて変更可能）
     run_simulation()
