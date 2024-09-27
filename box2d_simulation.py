@@ -6,7 +6,7 @@ from config_manager import ConfigManager
 from log import get_logger
 from queue import Empty
 
-logger = get_logger(__name__)
+
 
 class CollisionListener(b2ContactListener):
     def __init__(self):
@@ -23,6 +23,7 @@ class CollisionListener(b2ContactListener):
 
 class Box2DSimulation:
     def __init__(self, queues):
+        self.logger = get_logger(self.__class__.__name__)
         self.queues = queues
         self.world = b2World(gravity=(0, 0), doSleep=True)
         self.collision_listener = CollisionListener()
@@ -50,10 +51,10 @@ class Box2DSimulation:
         self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
         self.current_agent_count = 0
 
-        logger.info("Box2DSimulation initialized")
+        self.logger.info("Box2DSimulation initialized")
   
     def initialize(self):
-        logger.info("Box2DSimulation is initializing")
+        self.logger.info("Box2DSimulation is initializing")
         init_data = self._eco_to_box2d_init.get()
         
         self.current_agent_count = init_data['current_agent_count']
@@ -67,7 +68,7 @@ class Box2DSimulation:
             velocity = init_data['velocities'][i]
             self._create_body(agent_id, species, position, velocity)
         
-        logger.info(f"Box2DSimulation initialized with {self.current_agent_count} agents")
+        self.logger.info(f"Box2DSimulation initialized with {self.current_agent_count} agents")
 
     def _create_body(self, agent_id, species, position, velocity=(0, 0)):
         linear_damping = self.config_manager.get_species_trait_value('DAMPING', species)
@@ -90,7 +91,7 @@ class Box2DSimulation:
                            friction=friction, restitution=restitution)
         body.mass = mass * circle_shape.radius
         self.bodies[agent_id] = body
-        logger.debug(f"Created body for agent {agent_id} of species {species}")
+        self.logger.debug(f"Created body for agent {agent_id} of species {species}")
         
     def update(self):
         self.process_ecosystem_queue()
@@ -112,10 +113,10 @@ class Box2DSimulation:
                 elif action == 'remove':
                     self._handle_agent_removed(update_data)
                 else:
-                    logger.warning(f"Box2DSimulation: Unknown action received: {action}")
+                    self.logger.warning(f"Box2DSimulation: Unknown action received: {action}")
             
             except Exception as e:
-                logger.exception(f"Box2DSimulation: Error processing ecosystem queue: {e}")
+                self.logger.exception(f"Box2DSimulation: Error processing ecosystem queue: {e}")
 
     def _handle_agent_added(self, data):
         agent_id = data['agent_id']
@@ -123,15 +124,15 @@ class Box2DSimulation:
         position = data['position']
         velocity = data.get('velocity', (0, 0))
         self._create_body(agent_id, species, position, velocity)
-        
+
         # Update numpy arrays
         index = self.current_agent_count
         self.agent_ids[index] = agent_id
         self.species[index] = species
         self.current_agent_count += 1
-        
-        logger.debug(f"Agent {agent_id} added to Box2D simulation.")
-        
+
+        self.logger.debug(f"Agent {agent_id} added to Box2D simulation.")
+
     def _handle_agent_removed(self, data):
         agent_id = data['agent_id']
         if agent_id in self.bodies:
@@ -146,9 +147,9 @@ class Box2DSimulation:
             self.species[self.current_agent_count-1] = 0
             self.current_agent_count -= 1
             
-            logger.info(f"Box2DSimulation: Agent {agent_id} removed from Box2D.")
+            self.logger.info(f"Box2DSimulation: Agent {agent_id} removed from Box2D.")
         else:
-            logger.warning(f"Box2DSimulation: Attempted to remove non-existent agent {agent_id} from Box2D")
+            self.logger.warning(f"Box2DSimulation: Attempted to remove non-existent agent {agent_id} from Box2D")
 
     def update_forces(self):
         try:
@@ -171,7 +172,7 @@ class Box2DSimulation:
                 body = self.bodies[agent_id]
                 self.positions[i] = body.position.x, body.position.y
             else:
-                logger.warning(f"Body for agent {agent_id} not found. Using last known position.")
+                self.logger.warning(f"Body for agent {agent_id} not found. Using last known position.")
 
     def send_data_to_tf(self):
         
@@ -197,4 +198,4 @@ class Box2DSimulation:
         }
         self._box2d_to_eco_collisions.put(collision_data)
         self.collision_listener.clear()  # Clear collisions after sending
-        logger.debug(f"Sent collision data to Ecosystem: {len(collision_data['collisions'])} collisions")
+        self.logger.debug(f"Sent collision data to Ecosystem: {len(collision_data['collisions'])} collisions")

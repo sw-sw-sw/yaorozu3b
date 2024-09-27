@@ -4,11 +4,14 @@ import noise
 import pygame
 from pygame import Vector2
 from config_manager import ConfigManager, DNASpecies
+from log import get_logger
+
 
 class Creature(pygame.sprite.Sprite):
 
     def __init__(self, species: int, position: Vector2):
         super().__init__() 
+        self.logger = get_logger(self.__class__.__name__)
         self.config_manager = ConfigManager()
         self.species = species
         self.dna: DNASpecies = self.config_manager.get_dna_for_species(species)

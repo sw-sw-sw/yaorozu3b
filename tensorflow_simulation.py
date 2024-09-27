@@ -5,10 +5,10 @@ import numpy as np
 from log import get_logger
 from queue import Empty
 
-logger = get_logger(__name__)
 class TensorFlowSimulation:
     def __init__(self, queues, max_agents=None):
-        logger.info("Initializing TensorFlowSimulation")
+        self.logger = get_logger(self.__class__.__name__)
+        self.logger.info("Initializing TensorFlowSimulation")
         # queue setting
         self.queues = queues
         self._ui_to_tensorflow_queue = queues['ui_to_tensorflow']
@@ -47,10 +47,10 @@ class TensorFlowSimulation:
         # Initialize species information
         self._init_species_information()
         self.initialized = False
-        logger.info("TensorFlowSimulation initialization completed")
+        self.logger.info("TensorFlowSimulation initialization completed")
 
     def _init_simulation_parameters(self):
-        logger.debug("Initializing simulation parameters")
+        self.logger.debug("Initializing simulation parameters")
         param_names = [
             'MAX_FORCE', 'SEPARATION_DISTANCE', 'COHESION_DISTANCE', 'SEPARATION_WEIGHT',
             'COHESION_WEIGHT', 'CENTER_ATTRACTION_WEIGHT', 'ROTATION_STRENGTH',
@@ -61,10 +61,10 @@ class TensorFlowSimulation:
             setattr(self, param.lower(), tf.Variable(
                 self.config_manager.get_trait_value(param), dtype=tf.float32
             ))
-        logger.debug("Simulation parameters initialized")
+        self.logger.debug("Simulation parameters initialized")
 
     def _init_species_information(self):
-        logger.debug("Initializing species information")
+        self.logger.debug("Initializing species information")
         self.predator_species = tf.constant([
             self.config_manager.get_species_trait_value('PREDATOR_SPECIES', i) for i in range(1, 9)
         ], dtype=tf.int32)
@@ -72,7 +72,7 @@ class TensorFlowSimulation:
             self.config_manager.get_species_trait_value('PREY_SPECIES', i) for i in range(1, 9)
         ], dtype=tf.int32)
         
-        logger.debug("Species information initialized")
+        self.logger.debug("Species information initialized")
     #------------------for profiling---------------------
     
     def enable_profiling(self):
@@ -117,7 +117,7 @@ class TensorFlowSimulation:
     # ---------------- Main -----------------------
     
     def initialize(self):
-        logger.info("TensorFlowSimulation is initializing")
+        self.logger.info("TensorFlowSimulation is initializing")
 
         while not self.initialized:
             try:
@@ -126,12 +126,12 @@ class TensorFlowSimulation:
                 self.tf_positions.assign(tf.convert_to_tensor(data['positions'], dtype=tf.float32))
                 self.tf_species.assign(tf.convert_to_tensor(data['species'], dtype=tf.int32))
                 self.initialized = True
-                logger.info(f"TensorFlowSimulation Initialized with {self.tf_current_agent_count.numpy()} agents")
+                self.logger.info(f"TensorFlowSimulation Initialized with {self.tf_current_agent_count.numpy()} agents")
             except Empty:
-                logger.warning("Waiting for initialization data from Ecosystem")
+                self.logger.warning("Waiting for initialization data from Ecosystem")
                 continue  # Queue is empty, continue waiting
         
-        logger.info("TensorFlowSimulation initialized successfully")
+        self.logger.info("TensorFlowSimulation initialized successfully")
 
     def update(self):
         self.update_property()
@@ -162,7 +162,7 @@ class TensorFlowSimulation:
             'current_agent_count': int(self.tf_current_agent_count.numpy())
         }
         self._tf_to_box2d.put(data)
-        logger.debug(f"Sent forces to Box2D for {data['current_agent_count']} agents")
+        self.logger.debug(f"Sent forces to Box2D for {data['current_agent_count']} agents")
 
     @tf.function
     def calculate_forces(self):        
@@ -282,6 +282,6 @@ class TensorFlowSimulation:
                 param_name, value = self._ui_to_tensorflow_queue.get_nowait()
                 if hasattr(self, param_name.lower()):
                     getattr(self, param_name.lower()).assign(value)
-                    logger.debug(f"Updated UI parameter: {param_name} = {value}")
+                    self.logger.debug(f"Updated UI parameter: {param_name} = {value}")
             except Empty:
                 break  # Queue is empty, exit the loop

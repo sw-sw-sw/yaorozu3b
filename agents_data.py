@@ -5,11 +5,10 @@ import time, random
 from config_manager import ConfigManager
 from delayed_queue import QueueItem, DelayedQueue
 
-logger = get_logger(__name__)
-
 class AgentsData:
     def __init__(self, queue_dict):
-        logger.info("Initializing AgentsData")
+        self.logger = get_logger(self.__class__.__name__)
+        self.logger.info("Initializing AgentsData")
         self.config_manager = ConfigManager()
         self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
         self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
@@ -41,12 +40,11 @@ class AgentsData:
         self.delayed_queue = DelayedQueue()
         self._delay_time = 0.1
 
-        logger.info(f"AgentsData initialized with max_agents_num: {self.max_agents_num}")
+        self.logger.info(f"AgentsData initialized with max_agents_num: {self.max_agents_num}")
 
-    # ----------------- main update ----------------------
     
     def initialize(self):
-        logger.info("Initializing Ecosystem agents")
+        self.logger.info("Initializing Ecosystem agents")
         octagon_radius = self.world_width / 4
         octagon_centers = []
         
@@ -69,13 +67,15 @@ class AgentsData:
             y = center_y + r * np.sin(theta)
             for i in range(initial_agent_num):
                 self.add_agent_no_notify(species, (float(x[i]), float(y[i])))
-            logger.info(f"Initialized {initial_agent_num} agents for species {species}")
+            self.logger.info(f"Initialized {initial_agent_num} agents for species {species}")
                 
         self.send_data_to_box2d_initialize()
         self.send_data_to_tf_initialize()
         self.send_data_to_visual_initialize()
-        logger.info("Ecosystem initialization completed")
-        
+        self.logger.info("Ecosystem initialization completed")
+
+    # ----------------- main update ----------------------
+
     def update(self):
         try:
             # data from Box2DSimulation
@@ -85,12 +85,12 @@ class AgentsData:
                 positions = box2d_data['positions']
                 if len(positions) == self.current_agent_count:
                     self.positions[:self.current_agent_count] = positions
-                    logger.debug(f"Updated agent data. Current agent count: {self.current_agent_count}")
+                    self.logger.debug(f"Updated agent data. Current agent count: {self.current_agent_count}")
                 else:
                     # logger.warning(f"Agent count mismatch. Box2D: {len(box2d_data['positions'])}, AgentsData: {self.current_agent_count}")
                     pass
         except Exception as e:
-            logger.exception(f"Error in Ecosystem update: {e}")
+            self.logger.exception(f"Error in Ecosystem update: {e}")
         
         self.delayed_queue.update()
 
@@ -107,15 +107,15 @@ class AgentsData:
         agent_id = self._add_agent_internal(species, position, velocity)
         if agent_id is not None:
             self._notify_agent_add(agent_id, species, position, velocity)
-            logger.info(f"Agent added: id={agent_id}, species={species}, position={position}")
+            self.logger.info(f"Agent added: id={agent_id}, species={species}, position={position}")
         else:
-            logger.error(f"Error: Cannot add agent. Maximum capacity of {self.max_agents_num} reached.")
+            self.logger.error(f"Error: Cannot add agent. Maximum capacity of {self.max_agents_num} reached.")
         return agent_id
     
     def add_agent_no_notify(self, species, position, velocity=(0,0)):
         agent_id = self._add_agent_internal(species, position)
         if agent_id is not None:
-            logger.debug(f"Agent added without notification: id={agent_id}, species={species}, position={position}")
+            self.logger.debug(f"Agent added without notification: id={agent_id}, species={species}, position={position}")
         return agent_id
     
     def _add_agent_internal(self, species, position, velocity=(0, 0)):
@@ -142,9 +142,9 @@ class AgentsData:
             self.agent_ids[index] = agent_id
             self.current_agent_count += 1
 
-            logger.debug(f"Agent added internally: id={agent_id}, species={species}, position={position}")
+            self.logger.debug(f"Agent added internally: id={agent_id}, species={species}, position={position}")
             return agent_id
-        logger.warning("Failed to add agent: maximum capacity reached")
+        self.logger.warning("Failed to add agent: maximum capacity reached")
         return None
 
     def _notify_agent_add(self, agent_id, species, position, velocity):
@@ -159,7 +159,7 @@ class AgentsData:
         }
         self._eco_to_box2d.put(add_data)
         self.send_data_to_visual_delay(add_data, self._delay_time)
-        logger.debug(f"Notified agent addition: id={agent_id}")
+        self.logger.debug(f"Notified agent addition: id={agent_id}")
 
     def remove_agent(self, agent_id):
         index = np.where(self.agent_ids[:self.current_agent_count] == agent_id)[0]
@@ -175,9 +175,9 @@ class AgentsData:
             self.available_ids.append(agent_id)
             
             self._notify_agent_removed(agent_id)
-            logger.info(f"Agent removed: id={agent_id}")
+            self.logger.info(f"Agent removed: id={agent_id}")
         else:
-            logger.warning(f"Warning: Agent {agent_id} does not exist. No agent removed.")
+            self.logger.warning(f"Warning: Agent {agent_id} does not exist. No agent removed.")
 
     def _swap_agent_data(self, index1, index2):
         for arr in [self.positions, self.velocities, self.species, self.agent_ids, 
@@ -206,7 +206,7 @@ class AgentsData:
         }
         self.send_data_to_visual_delay(remove_data, self._delay_time)
         self._eco_to_box2d.put(remove_data)
-        logger.debug(f"Notified agent removal: id={agent_id}")
+        self.logger.debug(f"Notified agent removal: id={agent_id}")
 
     # -------------- life cycle -------------------------
 
@@ -241,7 +241,7 @@ class AgentsData:
                     new_index = np.where(self.agent_ids == new_agent_id)[0][0]
                     self.life_energy[index] /= 2
                     self.life_energy[new_index] = self.life_energy[index]
-
+                self.logger.debug(f'Reproduction success !! species{species} agent_id{agent_id} / {new_agent_id}.')
     # ----------------- Queues ----------------------
 
     def send_data_to_tf_initialize(self):
@@ -251,7 +251,7 @@ class AgentsData:
             'current_agent_count': self.current_agent_count
         }
         self._eco_to_tf_init.put(data)
-        logger.info(f"Sent initialization data to TensorFlow. Agent count: {self.current_agent_count}")
+        self.logger.info(f"Sent initialization data to TensorFlow. Agent count: {self.current_agent_count}")
 
     def send_data_to_box2d_initialize(self):
         data = {
@@ -262,7 +262,7 @@ class AgentsData:
             'current_agent_count': self.current_agent_count
         }
         self._eco_to_box2d_init.put(data)
-        logger.info(f"Sent initialization data to Box2D. Agent count: {self.current_agent_count}")
+        self.logger.info(f"Sent initialization data to Box2D. Agent count: {self.current_agent_count}")
 
     def send_data_to_visual_initialize(self):
         data = {
@@ -272,11 +272,11 @@ class AgentsData:
             'current_agent_count': self.current_agent_count
         }
         self._eco_to_visual_init.put(data)
-        logger.info(f"Sent initialization data to Visual System. Agent count: {self.current_agent_count}")
+        self.logger.info(f"Sent initialization data to Visual System. Agent count: {self.current_agent_count}")
 
     def send_data_to_visual_delay(self, _data, _delay_time):
         self.delayed_queue.add(_data, _delay_time, self._eco_to_visual_queue)
-        logger.info(f"Sent data to Visual System. Agent Add or Remove: {self.current_agent_count}")
+        self.logger.info(f"Sent data to Visual System. Agent Add or Remove: {self.current_agent_count}")
 
     def _eco_to_visual_queue(self, data):
         self._eco_to_visual.put(data)
@@ -285,3 +285,8 @@ class AgentsData:
     
     def available_agent_ids(self):
         return self.agent_ids[:self.current_agent_count]
+    
+    def available_species8_positions(self):
+        indexes = np.where(self.species == 8)[0]
+        position = random.choice(self.positions[indexes])
+        return position
