@@ -11,4 +11,4 @@ logs/
 SETTINGS/
 capture/
 build/
-log/
+log/logs/error.log
