@@ -168,13 +168,13 @@ def run_simulation():
         'eco_to_visual_init': mp.Queue(),
         'eco_to_visual': mp.Queue(),
         # 'eco_to_visual_render': mp.Queue(maxsize=10),
-        'eco_to_tf': mp.Queue(maxsize=10),
-        'box2d_to_visual_render': mp.Queue(maxsize=10),
-        'box2d_to_tf': mp.Queue(maxsize=10),
-        'box2d_to_eco': mp.Queue(maxsize=10),
-        'tf_to_box2d': mp.Queue(maxsize=10),
+        'eco_to_tf': mp.Queue(maxsize=1),
+        'box2d_to_visual_render': mp.Queue(maxsize=1),
+        'box2d_to_tf': mp.Queue(maxsize=1),
+        'box2d_to_eco': mp.Queue(maxsize=1),
+        'tf_to_box2d': mp.Queue(maxsize=1),
         'ui_to_tensorflow': mp.Queue(),
-        'box2d_to_eco_collisions': mp.Queue()
+        'box2d_to_eco_collisions': mp.Queue(maxsize=1)
     }
 
     initialization_complete = {
@@ -223,5 +223,5 @@ def run_simulation():
     logger.info("Simulation ended")
 
 if __name__ == "__main__":
-    set_log_level(logging.DEBUG)  # ログレベルを設定（必要に応じて変更可能）
+    set_log_level(logging.CRITICAL)  # ログレベルを設定（必要に応じて変更可能）
     run_simulation()

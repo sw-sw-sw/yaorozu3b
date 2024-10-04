@@ -33,7 +33,7 @@ class Ecosystem:
         self.process_collisions()
         self.env_energy += self.ad.update_life_energy()
         self.env_energy += self.ad.check_deaths()
-        self.logger.debug(f'total environment energy is {self.env_energy}')
+        # self.logger.debug(f'total environment energy is {self.env_energy}')
         self.ad.check_reproductions()
         
         if self.ad.current_agent_count < self.max_agents_num:
@@ -52,10 +52,15 @@ class Ecosystem:
             pass
 
     def _handle_collision(self, agent_id1, agent_id2):
-        index1 = np.where(self.ad.agent_ids == agent_id1)[0][0]
-        index2 = np.where(self.ad.agent_ids == agent_id2)[0][0]
-        species1 = self.ad.species[index1]
-        species2 = self.ad.species[index2]
+        index1 = np.where(self.ad.agent_ids == agent_id1)[0]
+        index2 = np.where(self.ad.agent_ids == agent_id2)[0]
+        
+        if len(index1) == 0 or len(index2) == 0:
+            self.logger.warning(f"Collision detected for non-existent agent(s): {agent_id1}, {agent_id2}")
+            return
+        
+        species1 = self.ad.species[index1[0]]
+        species2 = self.ad.species[index2[0]]
     
         if species1 == species2:
             # Same species interaction (cooperation)

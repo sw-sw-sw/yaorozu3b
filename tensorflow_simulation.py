@@ -162,7 +162,7 @@ class TensorFlowSimulation:
             'current_agent_count': int(self.tf_current_agent_count.numpy())
         }
         self._tf_to_box2d.put(data)
-        self.logger.debug(f"Sent forces to Box2D for {data['current_agent_count']} agents")
+        # self.logger.debug(f"Sent forces to Box2D for {data['current_agent_count']} agents")
 
     @tf.function
     def calculate_forces(self):        

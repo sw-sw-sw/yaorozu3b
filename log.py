@@ -69,7 +69,7 @@ class SimulationLogger:
         # メインログファイルのハンドラ
         main_log_path = os.path.join(self.log_dir, 'simulation.log')
         main_file_handler = RotatingFileHandler(main_log_path, maxBytes=10*1024*1024, backupCount=5)
-        main_file_handler.setLevel(logging.DEBUG)
+        main_file_handler.setLevel(logging.INFO)
         main_file_handler.setFormatter(logging.Formatter('%(asctime)s - %(classname)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(main_file_handler)
 
@@ -82,7 +82,7 @@ class SimulationLogger:
 
         # コンソール出力用のハンドラ
         console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setLevel(logging.DEBUG)
+        console_handler.setLevel(logging.WARNING)
         console_handler.setFormatter(ColoredFormatter('%(asctime)s - %(classname)s - %(levelname)s - %(message)s'))
         self.logger.addHandler(console_handler)
 

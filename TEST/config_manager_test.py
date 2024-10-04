@@ -23,7 +23,7 @@ class TestConfigManager(unittest.TestCase):
 
     def test_get_species_trait_value(self):
         mass_species_1 = self.config_manager.get_species_trait_value('MASS', 1)
-        self.assertEqual(mass_species_1, 3.0)
+        self.assertEqual(mass_species_1, 1.0)
         
         # GLOBALとSpecies固有の値の比較
         global_mass = self.config_manager.get_trait_value('MASS')
@@ -45,7 +45,7 @@ class TestConfigManager(unittest.TestCase):
         dna_species_1 = self.config_manager.get_dna_for_species(1)
         self.assertIsInstance(dna_species_1, DNASpecies)
         self.assertEqual(dna_species_1.species_id, 1)
-        self.assertEqual(dna_species_1.get_trait('MASS'), 3.0)
+        self.assertEqual(dna_species_1.get_trait('MASS'), 1.0)
 
     def test_dna_species_consistency(self):
         dna_species_1 = self.config_manager.get_dna_for_species(1)

@@ -128,7 +128,7 @@ class VisualSystem:
         self.screen.blit(self.world_surface, rect)
         
         pygame.display.flip()
-        self.logger.debug("Frame rendered")
+        # self.logger.debug("Frame rendered")
             
     def _handle_agent_added(self, data):
         agent_id = data['agent_id']

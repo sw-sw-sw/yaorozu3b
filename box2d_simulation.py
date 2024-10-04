@@ -3,7 +3,7 @@ import numpy as np
 import random
 import time
 from config_manager import ConfigManager
-from log import get_logger
+from log import get_logger, set_log_level
 from queue import Empty
 
 
@@ -16,7 +16,8 @@ class CollisionListener(b2ContactListener):
     def BeginContact(self, contact):
         body_a = contact.fixtureA.body
         body_b = contact.fixtureB.body
-        self.collisions.add((body_a.userData, body_b.userData))
+        collision = tuple(sorted((body_a.userData, body_b.userData)))
+        self.collisions.add(collision)
 
     def clear(self):
         self.collisions.clear()
@@ -51,6 +52,11 @@ class Box2DSimulation:
         self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
         self.current_agent_count = 0
 
+        # reduce collision data
+        self.frame_counter = 0
+        self.collision_send_interval = 1
+        self.collision_sample_size = 1
+        
         self.logger.info("Box2DSimulation initialized")
   
     def initialize(self):
@@ -100,8 +106,10 @@ class Box2DSimulation:
         self.update_positions()
         self.send_data_to_tf()
         self.send_data_to_eco_visual()
-
-        self.send_collision_data_to_eco()  # New method to send collision data
+        
+        self.frame_counter += 1
+        if self.frame_counter % self.collision_send_interval == 0:
+            self.send_collision_data_to_eco()
 
     def process_ecosystem_queue(self):
         while not self._eco_to_box2d.empty():
@@ -193,9 +201,19 @@ class Box2DSimulation:
 
 
     def send_collision_data_to_eco(self):
+        all_collisions = self.collision_listener.collisions
+        total_collisions = len(all_collisions)
+        
+        if total_collisions > self.collision_sample_size:
+            sampled_collisions = random.sample(list(all_collisions), self.collision_sample_size)
+        else:
+            sampled_collisions = all_collisions
+            
         collision_data = {
-            'collisions': list(self.collision_listener.collisions)
+            'collisions': sampled_collisions,
         }
+
         self._box2d_to_eco_collisions.put(collision_data)
-        self.collision_listener.clear()  # Clear collisions after sending
-        self.logger.debug(f"Sent collision data to Ecosystem: {len(collision_data['collisions'])} collisions")
+        self.collision_listener.clear()  # 衝突データをクリア
+        
+        self.logger.debug(f"Sent sampled collision data to Ecosystem: {len(sampled_collisions)} out of {total_collisions} collisions")

@@ -85,13 +85,13 @@ class AgentsData:
                 positions = box2d_data['positions']
                 if len(positions) == self.current_agent_count:
                     self.positions[:self.current_agent_count] = positions
-                    self.logger.debug(f"Updated agent data. Current agent count: {self.current_agent_count}")
+                    # self.logger.debug(f"Updated agent data. Current agent count: {self.current_agent_count}")
                 else:
                     # logger.warning(f"Agent count mismatch. Box2D: {len(box2d_data['positions'])}, AgentsData: {self.current_agent_count}")
                     pass
         except Exception as e:
-            self.logger.exception(f"Error in Ecosystem update: {e}")
-        
+            # self.logger.exception(f"Error in Ecosystem update: {e}")
+            pass
         self.delayed_queue.update()
 
     # ------------------ add agent ---------------------
@@ -132,9 +132,9 @@ class AgentsData:
             self.species[index] = species
             
             radius = self.config_manager.get_species_trait_value('RADIUS', species)
-            self.life_energy[index] = radius * 1000
-            self.loss_rate[index] = radius
-            self.life_gain[index] = self.life_energy[index] / 500
+            self.life_energy[index] = self.config_manager.get_species_trait_value('LIFE_ENERGY', species)
+            self.loss_rate[index] = self.config_manager.get_species_trait_value('LIFE_ENERGY_LOSS_RATE', species)
+            self.life_gain[index] = self.config_manager.get_species_trait_value('LIFE_ENERGY', species)
             self.birth_threshold[index] = self.config_manager.get_species_trait_value('BIRTH_THRESHOLD', species)
             self.predator_rate[index] = self.config_manager.get_species_trait_value('PREDATOR_RATE', species)
             self.reproduction_rate[index] = self.config_manager.get_species_trait_value('REPRODUCTION_RATE', species) / radius
@@ -213,13 +213,16 @@ class AgentsData:
     def update_life_energy(self):
         energy_to_env = 0
         energy_loss = self.loss_rate[:self.current_agent_count]
-        self.life_energy[:self.current_agent_count] -= energy_loss * 0.1
+        self.life_energy[:self.current_agent_count] -= energy_loss
         energy_to_env += np.sum(energy_loss)
         return energy_to_env
     
     def check_deaths(self):
         energy_to_env = 0
         dead_agents = np.where(self.life_energy[:self.current_agent_count] <= 0)[0]
+        
+        # self.logger.info(f'dead agents = {dead_agents}')
+        
         for index in dead_agents[::-1]:  # Iterate in reverse order
             agent_id = self.agent_ids[index]
             species = self.species[index]
@@ -235,13 +238,13 @@ class AgentsData:
                 agent_id = self.agent_ids[index]
                 species = self.species[index]
                 position = self.positions[index]
-                new_position = (position[0] + random.uniform(-10, 10), position[1] + random.uniform(-10, 10))
+                new_position = (position[0] + random.uniform(-3, 3), position[1] + random.uniform(-3, 3))
                 new_agent_id = self.add_agent(species, new_position)
                 if new_agent_id is not None:
                     new_index = np.where(self.agent_ids == new_agent_id)[0][0]
                     self.life_energy[index] /= 2
                     self.life_energy[new_index] = self.life_energy[index]
-                self.logger.debug(f'Reproduction success !! species{species} agent_id{agent_id} / {new_agent_id}.')
+                self.logger.debug(f'Reproduction success !! species{species} agent_id {agent_id} => {new_agent_id}.')
     # ----------------- Queues ----------------------
 
     def send_data_to_tf_initialize(self):
