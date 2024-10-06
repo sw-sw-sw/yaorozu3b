@@ -6,7 +6,6 @@ from pygame import Vector2
 from config_manager import ConfigManager, DNASpecies
 from log import get_logger
 
-
 class Creature(pygame.sprite.Sprite):
 
     def __init__(self, species: int, position: Vector2):

@@ -1,3 +1,4 @@
+import threading
 from Box2D import b2World, b2Vec2, b2BodyDef, b2_dynamicBody, b2CircleShape, b2ContactListener
 import numpy as np
 import random
@@ -5,8 +6,6 @@ import time
 from config_manager import ConfigManager
 from log import get_logger, set_log_level
 from queue import Empty
-
-
 
 class CollisionListener(b2ContactListener):
     def __init__(self):
@@ -38,7 +37,6 @@ class Box2DSimulation:
         self._box2d_to_tf = queues['box2d_to_tf']
         self._box2d_to_eco = queues['box2d_to_eco']
         self._box2d_to_visual_render = queues['box2d_to_visual_render']
-
         self._box2d_to_eco_collisions = queues['box2d_to_eco_collisions']  # New queue for collision data
 
         # ConfigManager setup
@@ -54,11 +52,18 @@ class Box2DSimulation:
 
         # reduce collision data
         self.frame_counter = 0
-        self.collision_send_interval = 1
-        self.collision_sample_size = 1
+        self.collision_send_interval = 2
+        self.collision_sample_size = 2
+    
+        # エージェント管理スレッドの開始
+        # self.data_lock = threading.Lock()
+        # self.agent_management_thread = threading.Thread(target=self.agent_management_worker)
+        # self.agent_management_thread.daemon = True
+        # self.agent_management_thread.start()
         
         self.logger.info("Box2DSimulation initialized")
-  
+
+    
     def initialize(self):
         self.logger.info("Box2DSimulation is initializing")
         init_data = self._eco_to_box2d_init.get()
@@ -83,7 +88,8 @@ class Box2DSimulation:
         friction = self.config_manager.get_species_trait_value('FRICTION', species)
         mass = self.config_manager.get_species_trait_value('MASS', species)
         radius = self.config_manager.get_species_trait_value('RADIUS', species)
-        
+
+        # with self.data_lock:
         body_def = b2BodyDef(
             type=b2_dynamicBody,
             position=b2Vec2(float(position[0]), float(position[1])),
@@ -94,11 +100,11 @@ class Box2DSimulation:
         body.userData = agent_id  # Set agent_id as userData for collision detection
         circle_shape = b2CircleShape(radius=radius)
         body.CreateFixture(shape=circle_shape, density=density, 
-                           friction=friction, restitution=restitution)
+                        friction=friction, restitution=restitution)
         body.mass = mass * circle_shape.radius
         self.bodies[agent_id] = body
         self.logger.debug(f"Created body for agent {agent_id} of species {species}")
-        
+
     def update(self):
         self.process_ecosystem_queue()
         self.update_forces()
@@ -107,10 +113,11 @@ class Box2DSimulation:
         self.send_data_to_tf()
         self.send_data_to_eco_visual()
         
-        self.frame_counter += 1
-        if self.frame_counter % self.collision_send_interval == 0:
-            self.send_collision_data_to_eco()
-
+        # self.frame_counter += 1
+        # if self.frame_counter % self.collision_send_interval == 0:
+            # self.send_collision_data_to_eco()
+            
+        
     def process_ecosystem_queue(self):
         while not self._eco_to_box2d.empty():
             try:
@@ -122,7 +129,22 @@ class Box2DSimulation:
                     self._handle_agent_removed(update_data)
                 else:
                     self.logger.warning(f"Box2DSimulation: Unknown action received: {action}")
-            
+            except Exception as e:
+                    self.logger.exception(f"Box2DSimulation: Error processing ecosystem queue: {e}")
+
+    def agent_management_worker(self):
+        while True:
+            try:
+                update_data = self._eco_to_box2d.get(timeout=0.001)
+                action = update_data.get('action')
+                if action == 'add':
+                    self._handle_agent_added(update_data)
+                elif action == 'remove':
+                    self._handle_agent_removed(update_data)
+                else:
+                    self.logger.warning(f"Box2DSimulation: Unknown action received: {action}")
+            except Empty:
+                continue
             except Exception as e:
                 self.logger.exception(f"Box2DSimulation: Error processing ecosystem queue: {e}")
 
@@ -130,9 +152,9 @@ class Box2DSimulation:
         agent_id = data['agent_id']
         species = data['species']
         position = data['position']
-        velocity = data.get('velocity', (0, 0))
-        self._create_body(agent_id, species, position, velocity)
+        self._create_body(agent_id, species, position)
 
+        # with self.data_lock:
         # Update numpy arrays
         index = self.current_agent_count
         self.agent_ids[index] = agent_id
@@ -147,7 +169,8 @@ class Box2DSimulation:
             self.world.DestroyBody(self.bodies[agent_id])
             del self.bodies[agent_id]
             
-            # Update numpy arrays
+            # with self.data_lock:
+                # Update numpy arrays
             index = np.where(self.agent_ids == agent_id)[0][0]
             self.agent_ids[index:-1] = self.agent_ids[index+1:]
             self.species[index:-1] = self.species[index+1:]
@@ -199,21 +222,23 @@ class Box2DSimulation:
         self._box2d_to_eco.put(data)
         self._box2d_to_visual_render.put(data)
 
-
     def send_collision_data_to_eco(self):
         all_collisions = self.collision_listener.collisions
         total_collisions = len(all_collisions)
-        
         if total_collisions > self.collision_sample_size:
             sampled_collisions = random.sample(list(all_collisions), self.collision_sample_size)
         else:
             sampled_collisions = all_collisions
-            
         collision_data = {
             'collisions': sampled_collisions,
         }
-
         self._box2d_to_eco_collisions.put(collision_data)
         self.collision_listener.clear()  # 衝突データをクリア
         
         self.logger.debug(f"Sent sampled collision data to Ecosystem: {len(sampled_collisions)} out of {total_collisions} collisions")
+
+    def cleanup(self):
+        # シミュレーション終了時にスレッドを適切に終了させる
+        self.agent_management_thread.join(timeout=1.0)
+        if self.agent_management_thread.is_alive():
+            self.logger.warning("Agent management thread did not terminate gracefully")

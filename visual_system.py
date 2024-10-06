@@ -118,7 +118,9 @@ class VisualSystem:
     def update_creatures(self):
         for agent_id, position in zip(self.agent_ids, self.positions):
             if agent_id in self.creatures:
-                self.creatures[agent_id].update(position)     
+                self.creatures[agent_id].update(position)    
+            else:
+                self.logger.warning(f'VisualSystem : no agent_id {agent_id}!!') 
            
     def draw(self):
         self.world_surface.fill(self.background_color)

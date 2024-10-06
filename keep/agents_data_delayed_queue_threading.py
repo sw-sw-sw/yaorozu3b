@@ -4,6 +4,7 @@ from log import get_logger
 import time, random
 import threading
 from config_manager import ConfigManager
+from delayed_queue import QueueItem, DelayedQueue
 
 class AgentsData:
     def __init__(self, queue_dict):
@@ -40,6 +41,12 @@ class AgentsData:
         self._eco_to_tf_init = queue_dict['eco_to_tf_init']
         self._eco_to_tf = queue_dict['eco_to_tf']
         self._box2d_to_eco = queue_dict['box2d_to_eco']
+        
+        # delayed queue settinh
+        self.delayed_queue = DelayedQueue()
+        self._delay_time = 0.0
+        self._running = True
+        self._delayed_queue_thread = None
 
         self.logger.info(f"AgentsData initialized with max_agents_num: {self.max_agents_num}")
 
@@ -78,11 +85,18 @@ class AgentsData:
 
     # ------------------ add agent ---------------------
     
+    def add_agent_delay(self, species, position, velocity, delay_time):
+        self.delayed_queue.add((species, position, velocity), delay_time, self.add_agent_arg)
+        
+    def add_agent_arg(self, args):
+        species, position, velocity = args
+        self.add_agent(species, position, velocity)
+    
     def add_agent(self, species, position, velocity=(0, 0)):
         agent_id = self._add_agent_internal(species, position, velocity)
         if agent_id is not None:
             self._notify_agent_add(agent_id, species, position, velocity)
-            self.logger.debug(f"Agent added: id={agent_id}, species={species}, position={position}")
+            self.logger.warning(f"Agent added: id={agent_id}, species={species}, position={position}")
         else:
             self.logger.error(f"Error: Cannot add agent. Maximum capacity of {self.max_agents_num} reached.")
         return agent_id
@@ -135,7 +149,7 @@ class AgentsData:
 
         }
         self._eco_to_box2d.put(add_data)
-        self.send_data_to_visual(add_data)
+        self.send_data_to_visual_delay(add_data, self._delay_time)
         self.logger.debug(f"Notified agent addition: id={agent_id}")
 
     def remove_agent(self, agent_id):
@@ -163,7 +177,7 @@ class AgentsData:
             'current_agent_count': self.current_agent_count
 
         }
-        self.send_data_to_visual(remove_data)
+        self.send_data_to_visual_delay(remove_data, self._delay_time)
         self._eco_to_box2d.put(remove_data)
         self.logger.debug(f"Notified agent removal: id={agent_id}")
 
@@ -250,8 +264,8 @@ class AgentsData:
         self._eco_to_visual_init.put(data)
         self.logger.info(f"Sent initialization data to Visual System. Agent count: {self.current_agent_count}")
 
-    def send_data_to_visual(self, data):
-        self._eco_to_visual.put(data)
+    def send_data_to_visual_delay(self, _data, _delay_time):
+        self.delayed_queue.add(_data, _delay_time, self._eco_to_visual_queue)
         self.logger.info(f"Sent data to Visual System. Agent Add or Remove: {self.current_agent_count}")
 
     def _eco_to_visual_queue(self, data):
@@ -269,3 +283,19 @@ class AgentsData:
         else:
             self.logger.warning("No species 8 agents found.")
             return None
+
+    # delayed queue
+    
+    def start_delayed_queue_thread(self):
+        self._delayed_queue_thread = threading.Thread(target=self._run_delayed_queue, daemon=True)
+        self._delayed_queue_thread.start()
+
+    def stop_delayed_queue_thread(self):
+        self._running = False
+        if self._delayed_queue_thread:
+            self._delayed_queue_thread.join()
+
+    def _run_delayed_queue(self):
+        while self._running:
+            self.delayed_queue.update()
+            time.sleep(0.01)  # 短い間隔でスリープして、CPUの使用を抑える

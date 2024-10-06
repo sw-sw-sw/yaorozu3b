@@ -44,8 +44,8 @@ class Ecosystem:
         # if self.ad.current_agent_count < self.max_agents_num:
         #     self._add_producer()
 
-        # self.random_add_agent(1,3) 
-        self.random_remove_agents(2,1)         
+        self.random_add_agents(30,3) 
+        # self.random_remove_agents(2,6.1)         
 
     def process_collisions(self):
         try:
@@ -105,7 +105,7 @@ class Ecosystem:
                 self.env_energy -= self.producer_threshold
                 self.logger.info(f"Added new producer agent with ID {new_agent_id} at position {position}")
 
-    def random_add_agent(self,num = 5, interval_time = 1):
+    def random_add_agents(self,num = 5, interval_time = 1):
         if num == 0:
             return
         

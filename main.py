@@ -32,7 +32,7 @@ def eco_run(queues, shared_memory, running, initialization_complete, eco_init_do
         return
     
     clock = pygame.time.Clock()
-    target_fps = 60
+    target_fps = 300
     
     while running.value:
         try:
@@ -90,12 +90,17 @@ def box2d_run(queues, shared_memory, running, initialization_complete, eco_init_
         running.value = False
         return
     
+    clock = pygame.time.Clock()
+    target_fps = 100
+    
     while running.value:
         try:
             timer.start()
             box2d.update()
-            time.sleep(0.001)
+            # time.sleep(0.001)
             timer.print_fps(5)
+            
+            clock.tick(target_fps)
         except Exception as e:
             logger.exception(f"Error in Box2D update: {e}")
             running.value = False
@@ -162,12 +167,11 @@ def run_simulation():
 
     running = mp.Value('b', True)
     queues = {
-        'eco_to_box2d_init': mp.Queue(),
-        'eco_to_box2d': mp.Queue(),
-        'eco_to_tf_init': mp.Queue(),
-        'eco_to_visual_init': mp.Queue(),
-        'eco_to_visual': mp.Queue(),
-        # 'eco_to_visual_render': mp.Queue(maxsize=10),
+        'eco_to_box2d_init': mp.Queue(maxsize=500),
+        'eco_to_box2d': mp.Queue(maxsize=100),
+        'eco_to_tf_init': mp.Queue(maxsize=500),
+        'eco_to_visual_init': mp.Queue(maxsize=500),
+        'eco_to_visual': mp.Queue(maxsize=100),
         'eco_to_tf': mp.Queue(maxsize=1),
         'box2d_to_visual_render': mp.Queue(maxsize=1),
         'box2d_to_tf': mp.Queue(maxsize=1),
@@ -223,5 +227,5 @@ def run_simulation():
     logger.info("Simulation ended")
 
 if __name__ == "__main__":
-    set_log_level(logging.CRITICAL)  # ログレベルを設定（必要に応じて変更可能）
+    set_log_level(logging.WARNING)  # ログレベルを設定（必要に応じて変更可能）
     run_simulation()
