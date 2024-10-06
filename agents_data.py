@@ -2,8 +2,8 @@ import numpy as np
 from queue import Empty
 from log import get_logger
 import time, random
+import threading
 from config_manager import ConfigManager
-from delayed_queue import QueueItem, DelayedQueue
 
 class AgentsData:
     def __init__(self, queue_dict):
@@ -13,22 +13,26 @@ class AgentsData:
         self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
         self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
         self.world_height = self.config_manager.get_trait_value('WORLD_HEIGHT')
-        self.positions = np.zeros((self.max_agents_num, 2), dtype=np.float32)
-        self.velocities = np.zeros((self.max_agents_num, 2), dtype=np.float32)  # New velocity array
-        self.species = np.zeros(self.max_agents_num, dtype=np.int32)
-        self.agent_ids = np.full(self.max_agents_num, -1, dtype=np.int32)
+
+        # Define the structured array
+        self.agents = np.zeros(self.max_agents_num, dtype=[
+            ('id', np.int32),
+            ('species', np.int32),
+            ('position', np.float32, (2,)),
+            ('velocity', np.float32, (2,)),
+            ('life_energy', np.float32),
+            ('loss_rate', np.float32),
+            ('life_gain', np.float32),
+            ('birth_threshold', np.float32),
+            ('predator_rate', np.float32),
+            ('reproduction_rate', np.float32)
+        ])
+
         self.current_agent_count = 0
         self.next_id = 0
         self.available_ids = []
-        
-        # New properties
-        self.life_energy = np.zeros(self.max_agents_num, dtype=np.float32)
-        self.loss_rate = np.zeros(self.max_agents_num, dtype=np.float32)
-        self.life_gain = np.zeros(self.max_agents_num, dtype=np.float32)
-        self.birth_threshold = np.zeros(self.max_agents_num, dtype=np.float32)
-        self.predator_rate = np.zeros(self.max_agents_num, dtype=np.float32)
-        self.reproduction_rate = np.zeros(self.max_agents_num, dtype=np.float32)
-        
+
+        # Queue setup
         self._eco_to_box2d = queue_dict['eco_to_box2d']
         self._eco_to_visual = queue_dict['eco_to_visual']
         self._eco_to_box2d_init = queue_dict['eco_to_box2d_init']
@@ -36,15 +40,12 @@ class AgentsData:
         self._eco_to_tf_init = queue_dict['eco_to_tf_init']
         self._eco_to_tf = queue_dict['eco_to_tf']
         self._box2d_to_eco = queue_dict['box2d_to_eco']
-        
-        self.delayed_queue = DelayedQueue()
-        self._delay_time = 0.1
 
         self.logger.info(f"AgentsData initialized with max_agents_num: {self.max_agents_num}")
 
     
     def initialize(self):
-        self.logger.info("Initializing Ecosystem agents")
+        self.logger.warning("Initializing Ecosystem agents")
         octagon_radius = self.world_width / 4
         octagon_centers = []
         
@@ -74,46 +75,20 @@ class AgentsData:
         self.send_data_to_visual_initialize()
         self.logger.info("Ecosystem initialization completed")
 
-    # ----------------- main update ----------------------
-
-    def update(self):
-        try:
-            # data from Box2DSimulation
-            if not self._box2d_to_eco.empty():
-                box2d_data = self._box2d_to_eco.get_nowait()                
-                # update ecosystem's property
-                positions = box2d_data['positions']
-                if len(positions) == self.current_agent_count:
-                    self.positions[:self.current_agent_count] = positions
-                    # self.logger.debug(f"Updated agent data. Current agent count: {self.current_agent_count}")
-                else:
-                    # logger.warning(f"Agent count mismatch. Box2D: {len(box2d_data['positions'])}, AgentsData: {self.current_agent_count}")
-                    pass
-        except Exception as e:
-            # self.logger.exception(f"Error in Ecosystem update: {e}")
-            pass
-        self.delayed_queue.update()
 
     # ------------------ add agent ---------------------
-    
-    def add_agent_delay(self, species, position, velocity, delay_time):
-        self.delayed_queue.add((species, position, velocity), delay_time, self.add_agent_arg)
-        
-    def add_agent_arg(self, args):
-        species, position, velocity = args
-        self.add_agent(species, position, velocity)
     
     def add_agent(self, species, position, velocity=(0, 0)):
         agent_id = self._add_agent_internal(species, position, velocity)
         if agent_id is not None:
             self._notify_agent_add(agent_id, species, position, velocity)
-            self.logger.info(f"Agent added: id={agent_id}, species={species}, position={position}")
+            self.logger.warning(f"Agent added: id={agent_id}, species={species}, position={position}")
         else:
             self.logger.error(f"Error: Cannot add agent. Maximum capacity of {self.max_agents_num} reached.")
         return agent_id
     
     def add_agent_no_notify(self, species, position, velocity=(0,0)):
-        agent_id = self._add_agent_internal(species, position)
+        agent_id = self._add_agent_internal(species, position, velocity)
         if agent_id is not None:
             self.logger.debug(f"Agent added without notification: id={agent_id}, species={species}, position={position}")
         return agent_id
@@ -127,19 +102,12 @@ class AgentsData:
                 self.next_id += 1
             
             index = self.current_agent_count
-            self.positions[index] = np.array(position, dtype=np.float32)
-            self.velocities[index] = np.array(velocity, dtype=np.float32)
-            self.species[index] = species
+            self.agents[index]['id'] = agent_id
+            self.agents[index]['species'] = species
+            self.agents[index]['position'] = position
+            self.agents[index]['velocity'] = velocity
+            self._set_agent_properties(index, species)
             
-            radius = self.config_manager.get_species_trait_value('RADIUS', species)
-            self.life_energy[index] = self.config_manager.get_species_trait_value('LIFE_ENERGY', species)
-            self.loss_rate[index] = self.config_manager.get_species_trait_value('LIFE_ENERGY_LOSS_RATE', species)
-            self.life_gain[index] = self.config_manager.get_species_trait_value('LIFE_ENERGY', species)
-            self.birth_threshold[index] = self.config_manager.get_species_trait_value('BIRTH_THRESHOLD', species)
-            self.predator_rate[index] = self.config_manager.get_species_trait_value('PREDATOR_RATE', species)
-            self.reproduction_rate[index] = self.config_manager.get_species_trait_value('REPRODUCTION_RATE', species) / radius
-            
-            self.agent_ids[index] = agent_id
             self.current_agent_count += 1
 
             self.logger.debug(f"Agent added internally: id={agent_id}, species={species}, position={position}")
@@ -147,6 +115,15 @@ class AgentsData:
         self.logger.warning("Failed to add agent: maximum capacity reached")
         return None
 
+    def _set_agent_properties(self, index, species):
+        self.agents[index]['life_energy'] = self.config_manager.get_species_trait_value('LIFE_ENERGY', species)
+        self.agents[index]['loss_rate'] = self.config_manager.get_species_trait_value('LIFE_ENERGY_LOSS_RATE', species)
+        self.agents[index]['life_gain'] = self.config_manager.get_species_trait_value('LIFE_ENERGY', species)
+        self.agents[index]['birth_threshold'] = self.config_manager.get_species_trait_value('BIRTH_THRESHOLD', species)
+        self.agents[index]['predator_rate'] = self.config_manager.get_species_trait_value('PREDATOR_RATE', species)
+        radius = self.config_manager.get_species_trait_value('RADIUS', species)
+        self.agents[index]['reproduction_rate'] = self.config_manager.get_species_trait_value('REPRODUCTION_RATE', species) / radius
+        
     def _notify_agent_add(self, agent_id, species, position, velocity):
         add_data = {
             'action': 'add',
@@ -158,19 +135,19 @@ class AgentsData:
 
         }
         self._eco_to_box2d.put(add_data)
-        self.send_data_to_visual_delay(add_data, self._delay_time)
+        self.send_data_to_visual(add_data)
         self.logger.debug(f"Notified agent addition: id={agent_id}")
 
     def remove_agent(self, agent_id):
-        index = np.where(self.agent_ids[:self.current_agent_count] == agent_id)[0]
+        index = np.where(self.agents['id'][:self.current_agent_count] == agent_id)[0]
         if len(index) > 0:
             index = index[0]
             last_index = self.current_agent_count - 1
             
             if index != last_index:
-                self._swap_agent_data(index, last_index)
+                self.agents[index] = self.agents[last_index]
             
-            self._reset_agent_data(last_index)
+            self.agents[last_index] = 0  # Reset the last agent's data
             self.current_agent_count -= 1
             self.available_ids.append(agent_id)
             
@@ -179,24 +156,6 @@ class AgentsData:
         else:
             self.logger.warning(f"Warning: Agent {agent_id} does not exist. No agent removed.")
 
-    def _swap_agent_data(self, index1, index2):
-        for arr in [self.positions, self.velocities, self.species, self.agent_ids, 
-                    self.life_energy, self.loss_rate, self.life_gain, 
-                    self.birth_threshold, self.predator_rate, self.reproduction_rate]:
-            arr[index1], arr[index2] = arr[index2], arr[index1]
-
-    def _reset_agent_data(self, index):
-        self.positions[index] = np.zeros(2, dtype=np.float32)
-        self.velocities[index] = np.zeros(2, dtype=np.float32)
-        self.species[index] = 0
-        self.agent_ids[index] = -1
-        self.life_energy[index] = 0
-        self.loss_rate[index] = 0
-        self.life_gain[index] = 0
-        self.birth_threshold[index] = 0
-        self.predator_rate[index] = 0
-        self.reproduction_rate[index] = 0
-
     def _notify_agent_removed(self, agent_id):
         remove_data = {
             'action': 'remove',
@@ -204,53 +163,67 @@ class AgentsData:
             'current_agent_count': self.current_agent_count
 
         }
-        self.send_data_to_visual_delay(remove_data, self._delay_time)
+        self.send_data_to_visual(remove_data)
         self._eco_to_box2d.put(remove_data)
         self.logger.debug(f"Notified agent removal: id={agent_id}")
 
-    # -------------- life cycle -------------------------
+    # ----------------- main update ----------------------
 
+    def update(self):
+        try:
+            if not self._box2d_to_eco.empty():
+                box2d_data = self._box2d_to_eco.get_nowait()
+                positions = box2d_data['positions']
+                if len(positions) == self.current_agent_count:
+                    self.agents['position'][:self.current_agent_count] = positions
+                else:
+                    self.logger.warning(f"Agent count mismatch. Box2D(length): {len(positions)}, AgentsData(current agent count): {self.current_agent_count}")
+        except Exception as e:
+            self.logger.exception(f"Error in AgentsData update: {e}")
+        
     def update_life_energy(self):
-        energy_to_env = 0
-        energy_loss = self.loss_rate[:self.current_agent_count]
-        self.life_energy[:self.current_agent_count] -= energy_loss
-        energy_to_env += np.sum(energy_loss)
-        return energy_to_env
-    
+        active_agents = self.agents[:self.current_agent_count]
+        energy_loss = active_agents['loss_rate']
+        active_agents['life_energy'] -= energy_loss
+        return np.sum(energy_loss)
+
     def check_deaths(self):
+        active_agents = self.agents[:self.current_agent_count]
+        dead_agents = active_agents[active_agents['life_energy'] <= 0]
         energy_to_env = 0
-        dead_agents = np.where(self.life_energy[:self.current_agent_count] <= 0)[0]
         
-        # self.logger.info(f'dead agents = {dead_agents}')
-        
-        for index in dead_agents[::-1]:  # Iterate in reverse order
-            agent_id = self.agent_ids[index]
-            species = self.species[index]
+        for dead_agent in dead_agents:
+            species = dead_agent['species']
             radius = self.config_manager.get_species_trait_value('RADIUS', species)
             energy_to_env += radius ** 2
-            self.remove_agent(agent_id) 
+            self.remove_agent(dead_agent['id'])
+        
         return energy_to_env
-    
+
     def check_reproductions(self):
-        reproducing_agents = np.where(self.life_energy[:self.current_agent_count] > self.birth_threshold[:self.current_agent_count])[0]
-        for index in reproducing_agents:
-            if random.random() < self.reproduction_rate[index]:
-                agent_id = self.agent_ids[index]
-                species = self.species[index]
-                position = self.positions[index]
-                new_position = (position[0] + random.uniform(-3, 3), position[1] + random.uniform(-3, 3))
-                new_agent_id = self.add_agent(species, new_position)
+        active_agents = self.agents[:self.current_agent_count]
+        reproducing_agents = active_agents[active_agents['life_energy'] > active_agents['birth_threshold']]
+        
+        for agent in reproducing_agents:
+            if random.random() < agent['reproduction_rate']:
+                new_position = (
+                    agent['position'][0] + random.uniform(-3, 3),
+                    agent['position'][1] + random.uniform(-3, 3)
+                )
+                new_agent_id = self.add_agent(agent['species'], new_position)
                 if new_agent_id is not None:
-                    new_index = np.where(self.agent_ids == new_agent_id)[0][0]
-                    self.life_energy[index] /= 2
-                    self.life_energy[new_index] = self.life_energy[index]
-                self.logger.debug(f'Reproduction success !! species{species} agent_id {agent_id} => {new_agent_id}.')
+                    new_agent_index = np.where(self.agents['id'] == new_agent_id)[0][0]
+                    agent['life_energy'] /= 2
+                    self.agents[new_agent_index]['life_energy'] = agent['life_energy']
+                self.logger.warning(f'Reproduction success!! species{agent["species"]} agent_id {agent["id"]} => {new_agent_id}.')
+                self.logger.warning(f'species{agent["species"]} pos {agent["position"]} new_pos {new_position}.')
+        
     # ----------------- Queues ----------------------
 
     def send_data_to_tf_initialize(self):
         data = {
-            'positions': self.positions,
-            'species': self.species,
+            'positions': self.agents['position'],
+            'species': self.agents['species'],
             'current_agent_count': self.current_agent_count
         }
         self._eco_to_tf_init.put(data)
@@ -258,10 +231,10 @@ class AgentsData:
 
     def send_data_to_box2d_initialize(self):
         data = {
-            'positions': self.positions[:self.current_agent_count],
-            'velocities': self.velocities[:self.current_agent_count], 
-            'species': self.species[:self.current_agent_count],
-            'agent_ids': self.agent_ids[:self.current_agent_count],
+            'positions': self.agents['position'][:self.current_agent_count],
+            'velocities': self.agents['velocity'][:self.current_agent_count],
+            'species': self.agents['species'][:self.current_agent_count],
+            'agent_ids': self.agents['id'][:self.current_agent_count],
             'current_agent_count': self.current_agent_count
         }
         self._eco_to_box2d_init.put(data)
@@ -269,16 +242,16 @@ class AgentsData:
 
     def send_data_to_visual_initialize(self):
         data = {
-            'positions': self.positions[:self.current_agent_count],
-            'species': self.species[:self.current_agent_count],
-            'agent_ids': self.agent_ids[:self.current_agent_count],
+            'positions': self.agents['position'][:self.current_agent_count],
+            'species': self.agents['species'][:self.current_agent_count],
+            'agent_ids': self.agents['id'][:self.current_agent_count],
             'current_agent_count': self.current_agent_count
         }
         self._eco_to_visual_init.put(data)
         self.logger.info(f"Sent initialization data to Visual System. Agent count: {self.current_agent_count}")
 
-    def send_data_to_visual_delay(self, _data, _delay_time):
-        self.delayed_queue.add(_data, _delay_time, self._eco_to_visual_queue)
+    def send_data_to_visual(self, data):
+        self._eco_to_visual.put(data)
         self.logger.info(f"Sent data to Visual System. Agent Add or Remove: {self.current_agent_count}")
 
     def _eco_to_visual_queue(self, data):
@@ -287,9 +260,12 @@ class AgentsData:
     # ------------------ sub methods ---------------------
     
     def available_agent_ids(self):
-        return self.agent_ids[:self.current_agent_count]
-    
+        return self.agents['id'][:self.current_agent_count]
+
     def available_species8_positions(self):
-        indexes = np.where(self.species == 8)[0]
-        position = random.choice(self.positions[indexes])
-        return position
+        species8_agents = self.agents[:self.current_agent_count][self.agents['species'][:self.current_agent_count] == 8]
+        if len(species8_agents) > 0:
+            return random.choice(species8_agents['position'])
+        else:
+            self.logger.warning("No species 8 agents found.")
+            return None

@@ -13,16 +13,21 @@ class Ecosystem:
         self.logger = get_logger(self.__class__.__name__)
         self.logger.info("Initializing Ecosystem")
         self.config_manager = ConfigManager()
+        # global parameter
         self.max_agents_num = self.config_manager.get_trait_value('MAX_AGENTS_NUM')
         self.world_width = self.config_manager.get_trait_value('WORLD_WIDTH')
         self.world_height = self.config_manager.get_trait_value('WORLD_HEIGHT')
+        # AgentsData 
         self.ad = AgentsData(queues)
-        self.ad.initialize()
+        # set timer
         self.add_timer = Timer("add random agent")
         self.remove_timer = Timer("remove random agent") # Timer
+        # queue
         self._box2d_to_eco_collisions = queues['box2d_to_eco_collisions'] # Timer
+        # ecosystem parameter
         self.env_energy = self.config_manager.get_trait_value('INITIAL_ENV_ENERGY')
         self.producer_threshold = self.config_manager.get_trait_value('PRODUCER_THRESHOLD')
+        # logger
         self.logger.info(f"Ecosystem initialized with max_agents_num: {self.max_agents_num}, world_size: {self.world_width}x{self.world_height}")
 
     def initialize(self):
@@ -30,17 +35,17 @@ class Ecosystem:
 
     def update(self):
         self.ad.update()
-        self.process_collisions()
-        self.env_energy += self.ad.update_life_energy()
-        self.env_energy += self.ad.check_deaths()
+        # self.process_collisions()
+        # self.env_energy += self.ad.update_life_energy()
+        # self.env_energy += self.ad.check_deaths()
         # self.logger.debug(f'total environment energy is {self.env_energy}')
-        self.ad.check_reproductions()
+        # self.ad.check_reproductions()
         
-        if self.ad.current_agent_count < self.max_agents_num:
-            self._add_producer()
+        # if self.ad.current_agent_count < self.max_agents_num:
+        #     self._add_producer()
 
-        # self.random_add_agent(0) 
-        # self.random_remove_agents(0)         
+        # self.random_add_agent(1,3) 
+        self.random_remove_agents(2,1)         
 
     def process_collisions(self):
         try:
@@ -59,8 +64,8 @@ class Ecosystem:
             self.logger.warning(f"Collision detected for non-existent agent(s): {agent_id1}, {agent_id2}")
             return
         
-        species1 = self.ad.species[index1[0]]
-        species2 = self.ad.species[index2[0]]
+        species1 = self.ad.agents['species'][index1[0]]
+        species2 = self.ad.agents['species'][index2[0]]
     
         if species1 == species2:
             # Same species interaction (cooperation)
@@ -109,8 +114,8 @@ class Ecosystem:
                 agent_ids = self.ad.available_agent_ids()
                 if len(agent_ids) > 10:
                     agent_id = random.choice(agent_ids)
-                    species = self.ad.species[agent_id]
-                    position = self.ad.positions[agent_id]
+                    species = self.ad.agents['species'][agent_id]
+                    position = self.ad.agents['position'][agent_id]
                     if species == 0:
                         self.logger.warning("No agents available for reproduction")
                     else:
